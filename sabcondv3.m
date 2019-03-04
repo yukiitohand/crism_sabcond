@@ -27,9 +27,8 @@ gausssigma = 0.6;
 optBP = 'pri'; %{'pri','all','none'}
 skip_ifexist = false;
 
-global localCRISM_PDSrootDir
-
-trry_pdir = joinPath(localCRISM_PDSrootDir,'./../YUK/');
+global crism_env_vars
+dir_yuk = crism_env_vars.dir_YUK;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -81,7 +80,7 @@ else
             case 'SKIP_IFEXIST'
                 skip_ifexist = varargin{i+1};
             case 'TRRY_PDIR'
-                trry_pdir = varargin{i+1};
+                dir_yuk = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
@@ -225,7 +224,7 @@ switch opt_img
         TRRRAIFdata = crism_obs.load_data([crism_obs.info.basenameRA '_IF'],crism_obs.info.dir_trdr,'ra_if');
         Yif = TRRRAIFdata.readimgi();
     case 'yuki_IoF'
-        d_IoF = joinPath(localCRISM_PDSrootDir,'./../YUK/', crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
         prop.product_type = 'YUK';
         prop.version = 5;
@@ -244,7 +243,7 @@ switch opt_img
 %         clear IoF_woc;
 %         Yif = flip(Yif,3);
     case 'TRRY'
-        d_IoF = joinPath(trry_pdir, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
         prop.version = 'Y';
         basenameTRRY = get_basenameOBS_fromProp(prop);
