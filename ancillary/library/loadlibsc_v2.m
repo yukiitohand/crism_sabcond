@@ -1,4 +1,4 @@
-function [ Alib,infoAall,valid_idx ] = loadlibsc_v2(optLibs,wabasename,optInterpid,c,bands_opt,wvc,cntRmvl,varargin)
+function [ Alib,infoAall,valid_idx,Aall ] = loadlibsc_v2(optLibs,wabasename,optInterpid,c,bands_opt,wvc,cntRmvl,varargin)
 global crism_env_vars
 localCRISM_PDSrootDir = crism_env_vars.localCRISM_PDSrootDir;
 %%
@@ -38,6 +38,9 @@ if ~overwrite && exist(Alibcachefilepath,'file')
     end
     if nargout>1
         load(Alibcachefilepath,'infoAall','valid_idx');
+        if nargout>3
+            load(Alibcachefilepath,'Aall');
+        end
     end
 else
     % crism spectral library
