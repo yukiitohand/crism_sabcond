@@ -1,6 +1,7 @@
 function [Aicelib,infoAicelib,valid_idx] = loadlibc_crism_icelib(opt,wabasename,c,bands_opt,wvc,varargin)
 
-global localCRISM_PDSrootDir
+global crism_env_vars
+localCRISM_PDSrootDir = crism_env_vars.localCRISM_PDSrootDir;
 
 overwrite = 0;
 cntRmvl = 0;
