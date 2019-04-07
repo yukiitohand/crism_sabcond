@@ -116,7 +116,7 @@ diary(joinPath(save_pdir,fname));
 fprintf('Current directory:%s\n',pwd);
 
 %% Read image and ancillary data and format them for processing
-crism_obs = CRISMObservationFRT(obs_id,'SENSOR_ID','L');
+crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
 if ~isempty(crism_obs.info.basenameIF)
     crism_obs.load_data(crism_obs.info.basenameIF,crism_obs.info.dir_trdr,'if');
     TRRIFdata = crism_obs.data.if;
@@ -156,12 +156,51 @@ end
 
 fprintf('suffix will be \n%s.\n',suffix);
 
-
 propIF = getProp_basenameOBSERVATION(TRRIFdata.basename);
 if TRRIF_is_empty
     propIF.activity_id = 'IF';
 end
 basenameIF = get_basenameOBS_fromProp(propIF);
+
+
+switch opt_img
+    case 'if'
+        basename_cr = [basenameIF suffix];
+    case 'ra_if'
+        basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
+%     case 'yuki_IoF'
+%         d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+%         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+%         prop.product_type = 'YUK';
+%         prop.version = 5;
+%         basenameYUK2 = get_basenameOBS_fromProp(prop);
+%         load(joinPath(d_IoF,[basenameYUK2 '.mat']),'IoF_woc');
+%         Yif = IoF_woc;
+%         clear IoF_woc;
+%         Yif = flip(Yif,3);
+%     case 'TRRY'
+%         d_IoF = joinPath(localCRISM_PDSrootDir,'./../YUK/', crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+%         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+%         prop.version = 'Y';
+%         basenameTRRY = get_basenameOBS_fromProp(prop);
+%         load(joinPath(d_IoF,[basenameTRRY '.mat']),'IoF_woc');
+%         Yif = IoF_woc;
+%         clear IoF_woc;
+%         Yif = flip(Yif,3);
+    case 'TRRY'
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = 'Y';
+        basenameTRRY = get_basenameOBS_fromProp(prop);
+        basename_cr = [basenameTRRY suffix];
+    case 'TRRC'
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = 'C';
+        basenameTRRC = get_basenameOBS_fromProp(prop);
+        basename_cr = [basenameTRRC suffix];
+    otherwise
+        error('opt_img = %s is not defined',opt_img);
+end
+
 
 basename_cr = [basenameIF suffix];
 fpath_cr = joinPath(save_dir,[basename_cr,'.img']);
@@ -223,16 +262,16 @@ switch opt_img
     case 'ra_if'
         TRRRAIFdata = crism_obs.load_data([crism_obs.info.basenameRA '_IF'],crism_obs.info.dir_trdr,'ra_if');
         Yif = TRRRAIFdata.readimgi();
-    case 'yuki_IoF'
-        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
-        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
-        prop.product_type = 'YUK';
-        prop.version = 5;
-        basenameYUK2 = get_basenameOBS_fromProp(prop);
-        load(joinPath(d_IoF,[basenameYUK2 '.mat']),'IoF_woc');
-        Yif = IoF_woc;
-        clear IoF_woc;
-        Yif = flip(Yif,3);
+%     case 'yuki_IoF'
+%         d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+%         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+%         prop.product_type = 'YUK';
+%         prop.version = 5;
+%         basenameYUK2 = get_basenameOBS_fromProp(prop);
+%         load(joinPath(d_IoF,[basenameYUK2 '.mat']),'IoF_woc');
+%         Yif = IoF_woc;
+%         clear IoF_woc;
+%         Yif = flip(Yif,3);
 %     case 'TRRY'
 %         d_IoF = joinPath(localCRISM_PDSrootDir,'./../YUK/', crism_obs.info.yyyy_doy, crism_obs.info.dirname);
 %         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
@@ -244,11 +283,12 @@ switch opt_img
 %         Yif = flip(Yif,3);
     case 'TRRY'
         d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
-        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
-        prop.version = 'Y';
-        basenameTRRY = get_basenameOBS_fromProp(prop);
         TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
         Yif = TRRYIFdata.readimgi();
+    case 'TRRC'
+        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        TRRCIFdata = CRISMdata(basenameTRRC,d_IoF);
+        Yif = TRRCIFdata.readimgi();
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
@@ -398,15 +438,22 @@ end
 %% read ADR transmission data
 prop = getProp_basenameCDR4(WAdata.basename);
 % [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
-[ at_trans ] = load_ADR_VS('t_mode',t_mode,'BINNING',prop.binning,...
-                           'WAVELENGTH_FILTER',prop.wavelength_filter);
+% [ at_trans ] = load_ADR_VS('t_mode',t_mode,'BINNING',prop.binning,...
+%                            'WAVELENGTH_FILTER',prop.wavelength_filter);
+[ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
+    'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
 
 T = at_trans(:,:,bands);
 T(T<=1e-8) = nan;
+T = permute(T,[3,1,2]);
 logT = log(T);
-logT = permute(logT,[3,1,2]);
 
-clear T
+% T = at_trans(:,:,bands);
+% T(T<=1e-8) = nan;
+% logT = log(T);
+% logT = permute(logT,[3,1,2]);
+% 
+% clear T
 
 fprintf('finish loading ADR\n');
 %% main loop
@@ -509,6 +556,8 @@ switch opt_img
         hdr_cr.cat_input_files = [basenameYUK2 '.mat'];
     case 'TRRY'
         hdr_cr.cat_input_files = [basenameTRRY '.mat'];
+    case 'TRRC'
+        hdr_cr.cat_input_files = [basenameTRRC '.mat'];
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end

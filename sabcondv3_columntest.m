@@ -22,8 +22,10 @@ t_mode = 2;
 isdebug = false;
 gausssigma = 0.6;
 optBP = 'pri'; %{'pri','all','none'}
+lls = [];
 
-global localCRISM_PDSrootDir
+global crism_env_vars
+dir_yuk = crism_env_vars.dir_YUK;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -62,6 +64,8 @@ else
                 isdebug = varargin{i+1};
             case 'OPTBP'
                 optBP = varargin{i+1};
+            case 'LLS'
+                lls = varargin{i+1};
 
             otherwise
                 % Hmmm, something wrong with the parameter string
@@ -84,32 +88,41 @@ optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 fprintf('Current directory:%s\n',pwd);
 
 %% Read image and ancillary data and format them for processing
-crism_obs = CRISMObservationFRT(obs_id,'SENSOR_ID','L');
-if ~isempty(crism_obs.info.basenameIF)
-    crism_obs.load_data(crism_obs.info.basenameIF,crism_obs.info.dir_trdr,'if');
-    TRRIFdata = crism_obs.data.if;
-    TRRIF_is_empty = false;
-else
-    TRRIFdata = '';
-    TRRIF_is_empty = true;
-end
-if ~isempty(crism_obs.info.basenameRA)
-    crism_obs.load_data(crism_obs.info.basenameRA,crism_obs.info.dir_trdr,'ra');
-    TRRRAdata = crism_obs.data.ra;
-else
-    TRRRAdata = '';
-end
-if ~isempty(crism_obs.info.basenameSC)
-    crism_obs.load_data(crism_obs.info.basenameSC,crism_obs.info.dir_edr,'sc');
-    EDRdata = crism_obs.data.sc;
-else
-    EDRdata = '';
-end
+crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
+switch crism_obs.info.obs_classType
+    case {'FRT','HRL','HRS','FRS','ATO','MSP','HSP'}
+        if ~isempty(crism_obs.info.basenameIF)
+            crism_obs.load_data(crism_obs.info.basenameIF,crism_obs.info.dir_trdr,'if');
+            TRRIFdata = crism_obs.data.if;
+            TRRIF_is_empty = false;
+        else
+            TRRIFdata = '';
+            TRRIF_is_empty = true;
+        end
+        if ~isempty(crism_obs.info.basenameRA)
+            crism_obs.load_data(crism_obs.info.basenameRA,crism_obs.info.dir_trdr,'ra');
+            TRRRAdata = crism_obs.data.ra;
+        else
+            TRRRAdata = '';
+        end
+        if ~isempty(crism_obs.info.basenameSC)
+            crism_obs.load_data(crism_obs.info.basenameSC,crism_obs.info.dir_edr,'sc');
+            EDRdata = crism_obs.data.sc;
+        else
+            EDRdata = '';
+        end
 
-if TRRIF_is_empty
-    TRRIFdata = TRRRAdata;
+        if TRRIF_is_empty
+            TRRIFdata = TRRRAdata;
+        end
+    case 'FFC'
+        TRRIFdata = CRISMdata(crism_obs.info.basenameIF{1},crism_obs.info.dir_trdr);
+        TRRIF_is_empty = false;
+        EDRdata = CRISMdata(crism_obs.info.basenameSC{1},crism_obs.info.dir_edr);
+    otherwise
+         error('Undefined observation class type %s',crism_obs.info.obs_classType);
 end
-
+        
 %% Read image and ancillary data and format them for processing
 TRRIFdata.load_basenamesCDR();
 WAdata = TRRIFdata.readCDR('WA'); WAdata.readimgi();
@@ -117,7 +130,9 @@ SBdata = TRRIFdata.readCDR('SB'); SBdata.readimgi();
 % crim = CRISMImage(obs_id,'SENSOR_ID','L');
 nLall = TRRIFdata.hdr.lines; nCall = TRRIFdata.hdr.samples; nBall = TRRIFdata.hdr.bands;
 % lines = 2:nLall-1;
-lls = 1:nLall;
+if isempty(lls)
+    lls = 1:nLall;
+end
 nL = length(lls);
 nB = length(bands);
 
@@ -142,13 +157,19 @@ switch opt_img
         %Yif = TRRRAIFdata.lazyEnviReadci(c);
         Yif = TRRRAIFdata.readimgi();
     case 'TRRY'
-        d_IoF = joinPath(localCRISM_PDSrootDir,'./../YUK/', crism_obs.info.yyyy_doy, crism_obs.info.dirname);
-        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
-        prop.version = 'Y';
-        basenameTRRY = get_basenameOBS_fromProp(prop);
-        TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
+        d_trry = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        prop_trry = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop_trry.version = 'Y';
+        basenameTRRY = get_basenameOBS_fromProp(prop_trry);
+        TRRYIFdata = CRISMdata(basenameTRRY,d_trry);
+        Yif = TRRYIFdata.readimgi();    
+    case 'TRRB'
+        d_trry = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        prop_trry = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop_trry.version = 'B';
+        basenameTRRY = get_basenameOBS_fromProp(prop_trry);
+        TRRYIFdata = CRISMdata(basenameTRRY,d_trry);
         Yif = TRRYIFdata.readimgi();
-        %Yif = TRRYIFdata.lazyEnviReadci(c);
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
@@ -184,27 +205,34 @@ switch EDRdata.lbl.OBSERVATION_TYPE
             dfimage = DFdata1.img;
             Noutliers = 2;
         %end
+    case {'FFC'}
+        DFdata1 = CRISMdata(crism_obs.info.basenameDF{1},crism_obs.info.dir_edr);
+        DFdata2 = CRISMdata(crism_obs.info.basenameDF{2},crism_obs.info.dir_edr);
+        DFdata1.readimgi();
+        DFdata2.readimgi();
+        dfimage = cat(1,DFdata1.img,DFdata2.img);
+        Noutliers = 4;
     otherwise
         error('Please define for other cases')
 end
 
 switch EDRdata.lbl.OBSERVATION_TYPE
-    case {'FRT','HRL','HRS'}
+    case {'FRT','HRL','HRS','FFC'}
         propDF1_IF = getProp_basenameOBSERVATION(DFdata1.basename);
         propDF1_IF.activity_id = 'IF';
         propDF1_IF.product_type = 'TRR';
-        propDF1_IF.version = 'Y';
+        propDF1_IF.version = prop_trry.version;
         bnameDF1_IF = get_basenameOBS_fromProp(propDF1_IF);
-        load(joinPath(d_IoF,[bnameDF1_IF '.mat']),'IoF_bk1_o');
+        load(joinPath(d_trry,[bnameDF1_IF '.mat']),'IoF_bk1_o');
         IoF_bk1_o = flip(IoF_bk1_o,3);
         IoF_bk1_o = permute(IoF_bk1_o,[3,1,2]);
         
         propDF2_IF = getProp_basenameOBSERVATION(DFdata2.basename);
         propDF2_IF.activity_id = 'IF';
         propDF2_IF.product_type = 'TRR';
-        propDF2_IF.version = 'Y';
+        propDF2_IF.version = prop_trry.version;
         bnameDF2_IF = get_basenameOBS_fromProp(propDF2_IF);
-        load(joinPath(d_IoF,[bnameDF2_IF '.mat']),'IoF_bk2_o');
+        load(joinPath(d_trry,[bnameDF2_IF '.mat']),'IoF_bk2_o');
         IoF_bk2_o = flip(IoF_bk2_o,3);
         IoF_bk2_o = permute(IoF_bk2_o,[3,1,2]);
         
@@ -214,7 +242,7 @@ switch EDRdata.lbl.OBSERVATION_TYPE
         propDF1_IF.product_type = 'TRR';
         propDF1_IF.version = 'Y';
         bnameDF1_IF = get_basenameOBS_fromProp(propDF1_IF);
-        load(joinPath(d_IoF,[bnameDF1_IF '.mat']),'IoF_bk1_o');
+        load(joinPath(d_trry,[bnameDF1_IF '.mat']),'IoF_bk1_o');
         IoF_bk1_o = flip(IoF_bk1_o,3);
         IoF_bk1_o = permute(IoF_bk1_o,[3,1,2]);
     otherwise
@@ -225,7 +253,7 @@ TRRIFdata.load_basenamesCDR();
 % read bad pixel data
 TRRIFdata.readCDR('BP');
 switch EDRdata.lbl.OBSERVATION_TYPE
-    case {'FRT','HRL','HRS'}
+    case {'FRT','HRL','HRS','FFC'}
         for i=1:length(TRRIFdata.cdr.BP)
             bpdata = TRRIFdata.cdr.BP(i);
             if ~any(strcmpi(EDRdata.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
@@ -349,10 +377,10 @@ if isdebug
 end
 
 %% read ADR transmission data
-prop = getProp_basenameCDR4(WAdata.basename);
+propWA = getProp_basenameCDR4(WAdata.basename);
 % [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
-[ at_trans ] = load_ADR_VS('t_mode',t_mode,'BINNING',prop.binning,...
-                           'WAVELENGTH_FILTER',prop.wavelength_filter);
+[ at_trans ] = load_ADR_VS('BINNING',propWA.binning,...
+                           'WAVELENGTH_FILTER',propWA.wavelength_filter);
 
 T = at_trans(:,:,bands);
 T(T<=1e-8) = nan;
