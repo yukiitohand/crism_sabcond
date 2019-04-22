@@ -8,6 +8,7 @@ lambda_a = 0.01;
 % band option
 opt_img = 'TRRY';
 bands_opt = 4;
+t_mode = 2;
 % library options
 optCRISMspclib = 1;
 optRELAB = 1;
@@ -23,6 +24,7 @@ isdebug = false;
 gausssigma = 0.6;
 optBP = 'pri'; %{'pri','all','none'}
 lls = [];
+T_add = [];
 
 global crism_env_vars
 dir_yuk = crism_env_vars.dir_YUK;
@@ -52,6 +54,8 @@ else
             %    opticelib = varargin{i+1};
             %case 'OPT_HITRANLIB'
             %    opthitranlib = varargin{i+1};
+            case 'T_MODE'
+                t_mode = varargin{i+1};
             case 'OPT_IMG'
                 opt_img = varargin{i+1};
             case 'CNTRMVL'
@@ -66,7 +70,8 @@ else
                 optBP = varargin{i+1};
             case 'LLS'
                 lls = varargin{i+1};
-
+            case 'T_ADD'
+                Tadd = [];
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
@@ -167,6 +172,13 @@ switch opt_img
         d_trry = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
         prop_trry = getProp_basenameOBSERVATION(TRRIFdata.basename);
         prop_trry.version = 'B';
+        basenameTRRY = get_basenameOBS_fromProp(prop_trry);
+        TRRYIFdata = CRISMdata(basenameTRRY,d_trry);
+        Yif = TRRYIFdata.readimgi();
+    case 'TRRC'
+        d_trry = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        prop_trry = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop_trry.version = 'C';
         basenameTRRY = get_basenameOBS_fromProp(prop_trry);
         TRRYIFdata = CRISMdata(basenameTRRY,d_trry);
         Yif = TRRYIFdata.readimgi();
@@ -379,8 +391,15 @@ end
 %% read ADR transmission data
 propWA = getProp_basenameCDR4(WAdata.basename);
 % [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
-[ at_trans ] = load_ADR_VS('BINNING',propWA.binning,...
-                           'WAVELENGTH_FILTER',propWA.wavelength_filter);
+switch t_mode
+    case {1,2,3}
+        [ at_trans ] = load_ADR_VS('BINNING',propWA.binning,...
+                                   'WAVELENGTH_FILTER',propWA.wavelength_filter);
+    case {4}
+        [ at_trans ] = load_T();
+    otherwise
+        error('Undefined t_mode %d',t_mode);
+end
 
 T = at_trans(:,:,bands);
 T(T<=1e-8) = nan;
@@ -428,8 +447,14 @@ for ci=1:nCLength
 
         [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,ancillary,rr_ori_c,vldpxl_c]...
             = sabcondc_v3l1_med(Alib,logYif(:,:,ci),WA(:,c),logtc,'GP',GP(:,:,c),...
-              'LAMBDA_A',lambda_a,'NITER',nIter,'VIS',vis);%,'maxiter',200);
+              'LAMBDA_A',lambda_a,'NITER',nIter,'VIS',vis,'Debug',true);%,'maxiter',200);
     %                 'LOGYIFC_CAT',logYifc_cat(:,:,c));%'LOGYRAIFC_CAT',logYraifc_cat(:,:,c));
+%         [logt_est,logYifc_cor100,logAB100,logBg100,logYifc_cor_ori100,logYifc_isnan100,ancillary100,rr_ori_c100,vldpxl_c100]...
+%             = sabcondc_v3l1_med(Alib,logYif(:,1:200,ci),WA(:,c),logtc,'GP',GP(:,:,c),...
+%               'LAMBDA_A',lambda_a,'NITER',nIter,'VIS',vis);
+%         [ logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,ancillary,rr_ori_c,vldpxl_c]...
+%             = sabcondc_v3l1_givent(Alib,logYif(:,:,ci),WA(:,c),logt_est,'GP',GP(:,:,c),...
+%               'LAMBDA_A',ancillary100.lambda.last(60),'NITER',nIter,'VIS',vis);
         logmodel = logBg + logAB;
         logYif_cor_nr = logYifc_cor;
         logYif_cor_nr(logYifc_isnan) = logmodel(logYifc_isnan);
