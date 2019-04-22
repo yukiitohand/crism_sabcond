@@ -21,6 +21,8 @@ optInterpid = 1;
 isdebug = false;
 gausssigma = 0.6;
 optBP = 'none'; %{'pri','all','none'}
+lls = [];
+T_add = [];
 
 global crism_env_vars
 dir_yuk = crism_env_vars.dir_YUK;
@@ -38,6 +40,8 @@ else
                 lambda_a = varargin{i+1};
             case 'BANDS_OPT'
                 bands_opt = varargin{i+1};
+            case 'T_MODE'
+                t_mode = varargin{i+1};
             case 'OPT_CRISMSPCLIB'
                 optCRISMspclib = varargin{i+1};
             case 'OPT_RELAB'
@@ -56,6 +60,8 @@ else
                 cntRmvl = varargin{i+1};
             case 'OPTINTERPID'
                 optInterpid = varargin{i+1};
+            case 'LLS'
+                lls = varargin{i+1};
             case 'DEBUG'
                 isdebug = varargin{i+1};
             case 'OPTBP'
@@ -82,14 +88,6 @@ fprintf('Current directory:%s\n',pwd);
 %% load crism_observation and TRR I/F data
 crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
 
-    function [CRISMdataobj] = load_CRISMdata(basename,dirpath)
-        if ~isempty(basename)
-            CRISMdataobj = CRISMdata(basename,dirpath);
-        else
-            CRISMdataobj = [];
-        end
-    end
-
 TRRIFdata = load_CRISMdata(crism_obs.info.basenameIF,crism_obs.info.dir_trdr);
 TRRRAdata = load_CRISMdata(crism_obs.info.basenameRA,crism_obs.info.dir_trdr);
 EDRdata = load_CRISMdata(crism_obs.info.basenameSC,crism_obs.info.dir_edr);
@@ -108,9 +106,11 @@ TRRIFdata.load_basenamesCDR();
 WAdata = TRRIFdata.readCDR('WA'); WAdata.readimgi();
 SBdata = TRRIFdata.readCDR('SB'); SBdata.readimgi();
 nLall = TRRIFdata.hdr.lines; nCall = TRRIFdata.hdr.samples; nBall = TRRIFdata.hdr.bands;
-lineList = 1:nLall;
-nL = length(lineList); nB = length(bands);
-lBool = false(nLall,1); lBool(lineList) = true;
+if isempty(lls)
+    lls = 1:nLall;
+end
+nL = length(lls); nB = length(bands);
+lBool = false(nLall,1); lBool(lls) = true;
 bBool = false(nBall,1); bBool(bands) = true;
 
 basenameWA = WAdata.basename;
@@ -141,11 +141,18 @@ switch lower(opt_img)
         basenameTRRB = get_basenameOBS_fromProp(prop);
         TRRBIFdata = CRISMdata(basenameTRRB,d_yuk_trr);
         Yif = TRRBIFdata.readimgi();
+    case 'trrc'
+        trr_vr = 'C';
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = trr_vr;
+        basenameTRRB = get_basenameOBS_fromProp(prop);
+        TRRBIFdata = CRISMdata(basenameTRRB,d_yuk_trr);
+        Yif = TRRBIFdata.readimgi();
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
 
-Yif = Yif(lineList,cList,bands);
+Yif = Yif(lls,:,bands);
 Yif(Yif<=1e-8) = nan;
 Yif = permute(Yif,[3,1,2]);
 logYif = log(Yif);
@@ -169,7 +176,7 @@ GP_all = GP_all(bands,:,:);
 BP_none = all(isnan(Yif),2);
 GP_none = double(~BP_none);
 GP_none(GP_none==0) = nan;
-GP_none = permute(GP_none,[1,3,2]);
+% GP_none = permute(GP_none,[1,3,2]);
 
 switch optBP
     case 'pri'
@@ -244,7 +251,8 @@ ifdfstd_self = nan(size(GP_all));
 ifdfImage = cat(2,IoF_bk1_o,IoF_bk2_o);
 for cd = 1:nCall
     ifdfimagec = ifdfImage(bands,:,cd);
-    std_df = robust_v2('stdl1',ifdfimagec,2,'NOutliers',Noutliers);
+    % std_df = robust_v3('stdl1',ifdfimagec,2,'NOutliers',Noutliers);
+    std_df = robust_v3('med_abs_dev_from_med',ifdfimagec,2,'NOutliers',Noutliers);
     ifdfstd_self(:,:,cd) = std_df(:);
 end
 
@@ -264,7 +272,7 @@ if isdebug
     TRRIFdata_corr.readimgi();
     Yif_cat = TRRIFdata_corr.img;
 
-    Yif_cat = Yif_cat(lineList,:,bands);
+    Yif_cat = Yif_cat(lls,:,bands);
     Yif_cat(Yif_cat<=1e-8) = nan;
     logYifc_cat = log(Yif_cat);
     logYifc_cat = permute(logYifc_cat,[3,1,2]);
@@ -275,7 +283,7 @@ if isdebug
     TRRRAIFdata_corr.readimgi();
     Yraif_cat = TRRRAIFdata_corr.img;
 
-    Yraif_cat = Yraif_cat(lineList,:,bands);
+    Yraif_cat = Yraif_cat(lls,:,bands);
     Yraif_cat(Yraif_cat<=1e-8) = nan;
     logYraifc_cat = log(Yraif_cat);
     logYraifc_cat = permute(logYraifc_cat,[3,1,2]);
@@ -284,8 +292,17 @@ if isdebug
 end
 
 %% read ADR transmission data
-[ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
-    'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
+propWA = getProp_basenameCDR4(WAdata.basename);
+% [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
+switch t_mode
+    case {1,2,3}
+        [ at_trans ] = load_ADR_VS('BINNING',propWA.binning,...
+                                   'WAVELENGTH_FILTER',propWA.wavelength_filter);
+    case {4}
+        [ at_trans ] = load_T();
+    otherwise
+        error('Undefined t_mode %d',t_mode);
+end
 
 T = at_trans(:,:,bands);
 T(T<=1e-8) = nan;
@@ -331,8 +348,9 @@ for ci=1:nCLength
         [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
 
         [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,ancillary,rr_ori_c,vldpxl_c]...
-            = sabcondc_v5l1_med(Alib,logYif(:,:,ci),WA(:,c),logtc,'GP',GP(:,:,c),...
-              'LAMBDA_A',lambda_a,'NITER',nIter,'VIS',vis,'T',T,'Yif',Yif,'stdl1_ifdf',ifdfstd_self(:,:,c));
+            = sabcondc_v5l1_med(Alib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...
+              'LAMBDA_A',lambda_a,'NITER',nIter,'VIS',vis,'T',T,'Yif',Yif(:,:,c),'stdl1_ifdf',ifdfstd_self(:,:,c),...
+              'debug',true,'BP_pri',BP_pri1nan(bands,c),'BP_All',BP_post1nan(bands,c));
     %                 'LOGYIFC_CAT',logYifc_cat(:,:,c));%'LOGYRAIFC_CAT',logYraifc_cat(:,:,c));
         logmodel = logBg + logAB;
         logYif_cor_nr = logYifc_cor;
@@ -363,3 +381,10 @@ GP = GP(:,:,cList);
 
 end
 
+function [CRISMdataobj] = load_CRISMdata(basename,dirpath)
+    if ~isempty(basename)
+        CRISMdataobj = CRISMdata(basename,dirpath);
+    else
+        CRISMdataobj = [];
+    end
+end
