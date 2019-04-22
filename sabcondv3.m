@@ -27,6 +27,9 @@ gausssigma = 0.6;
 optBP = 'pri'; %{'pri','all','none'}
 skip_ifexist = false;
 
+ffc_counter = 1;
+lls = [];
+
 global crism_env_vars
 dir_yuk = crism_env_vars.dir_YUK;
 
@@ -35,6 +38,8 @@ if (rem(length(varargin),2)==1)
 else
     for i=1:2:(length(varargin)-1)
         switch upper(varargin{i})
+            case 'FFC_IF_COUNTER'
+                ffc_counter = varargin{i+1};
             case 'NITER'
                 nIter = varargin{i+1};
             case 'VIS'
@@ -81,6 +86,8 @@ else
                 skip_ifexist = varargin{i+1};
             case 'TRRY_PDIR'
                 dir_yuk = varargin{i+1};
+            case 'LLS'
+                lls = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
@@ -117,30 +124,45 @@ fprintf('Current directory:%s\n',pwd);
 
 %% Read image and ancillary data and format them for processing
 crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
-if ~isempty(crism_obs.info.basenameIF)
-    crism_obs.load_data(crism_obs.info.basenameIF,crism_obs.info.dir_trdr,'if');
-    TRRIFdata = crism_obs.data.if;
-    TRRIF_is_empty = false;
-else
-    TRRIFdata = '';
-    TRRIF_is_empty = true;
+crism_obsS = CRISMObservation(obs_id,'SENSOR_ID','S');
+switch upper(crism_obs.info.obs_classType)
+    case {'FRT','HRL','HRS','FRS','ATO','MSP','HSP'}
+        if ~isempty(crism_obs.info.basenameIF)
+            TRRIF_is_empty = false;
+            TRRIFdata = CRISMdata(crism_obs.info.basenameIF,'');
+        elseif ~isempty(crism_obs.info.basenameRA)
+            TRRIF_is_empty = true;
+            TRRIFdata = CRISMdata(crism_obs.info.basenameRA,'');
+        else
+            error('Check data');
+        end
+    case {'FFC'}
+        switch ffc_counter
+            case 1
+                if ~isempty(crism_obs.info.basenameIF)
+                    TRRIF_is_empty = false;
+                    TRRIFdata = CRISMdata(crism_obs.info.basenameIF{1},'');
+                elseif ~isempty(crism_obs.info.basenameRA)
+                    TRRIF_is_empty = true;
+                    TRRIFdata = CRISMdata(crism_obs.info.basenameRA{1},'');
+                else
+                    error('Check data');
+                end
+            case 3
+                if ~isempty(crism_obs.info.basenameIF)
+                    TRRIF_is_empty = false;
+                    TRRIFdata = CRISMdata(crism_obs.info.basenameIF{2},'');
+                elseif ~isempty(crism_obs.info.basenameRA)
+                    TRRIF_is_empty = true;
+                    TRRIFdata = CRISMdata(crism_obs.info.basenameRA{2},'');
+                else
+                    error('Check data');
+                end
+            otherwise
+                error('Check data');
+        end
 end
-if ~isempty(crism_obs.info.basenameRA)
-    crism_obs.load_data(crism_obs.info.basenameRA,crism_obs.info.dir_trdr,'ra');
-    TRRRAdata = crism_obs.data.ra;
-else
-    TRRRAdata = '';
-end
-if ~isempty(crism_obs.info.basenameSC)
-    crism_obs.load_data(crism_obs.info.basenameSC,crism_obs.info.dir_edr,'sc');
-    EDRdata = crism_obs.data.sc;
-else
-    EDRdata = '';
-end
-
-if TRRIF_is_empty
-    TRRIFdata = TRRRAdata;
-end
+[DFdata1,DFdata2] = get_DFdata4SC(TRRIFdata,crism_obs);
 
 %%
 %-------------------------------------------------------------------------%
@@ -192,6 +214,11 @@ switch opt_img
         prop.version = 'Y';
         basenameTRRY = get_basenameOBS_fromProp(prop);
         basename_cr = [basenameTRRY suffix];
+    case 'TRRB'
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = 'B';
+        basenameTRRB = get_basenameOBS_fromProp(prop);
+        basename_cr = [basenameTRRB suffix];
     case 'TRRC'
         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
         prop.version = 'C';
@@ -240,11 +267,13 @@ SBdata = TRRIFdata.readCDR('SB'); SBdata.readimgi();
 % crim = CRISMImage(obs_id,'SENSOR_ID','L');
 nLall = TRRIFdata.hdr.lines; nCall = TRRIFdata.hdr.samples; nBall = TRRIFdata.hdr.bands;
 % lines = 2:nLall-1;
-lines = 1:nLall;
-nL = length(lines);
+if isempty(lls)
+    lls = 1:nLall;
+end
+nL = length(lls);
 nB = length(bands);
 
-lBool = false(nLall,1); lBool(lines) = true;
+lBool = false(nLall,1); lBool(lls) = true;
 bBool = false(nBall,1); bBool(bands) = true;
 
 
@@ -285,6 +314,10 @@ switch opt_img
         d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
         TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
         Yif = TRRYIFdata.readimgi();
+    case 'TRRB'
+        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        TRRBIFdata = CRISMdata(basenameTRRB,d_IoF);
+        Yif = TRRBIFdata.readimgi();
     case 'TRRC'
         d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
         TRRCIFdata = CRISMdata(basenameTRRC,d_IoF);
@@ -293,7 +326,7 @@ switch opt_img
         error('opt_img = %s is not defined',opt_img);
 end
 
-Yif = Yif(lines,:,bands);
+Yif = Yif(lls,:,bands);
 Yif(Yif<=1e-8) = nan;
 logYif = log(Yif);
 logYif = permute(logYif,[3,1,2]);
@@ -303,56 +336,7 @@ fprintf('finish loading Image\n');
 
 %%
 % read bad pixel
-switch EDRdata.lbl.OBSERVATION_TYPE
-    case {'FRT','HRL','HRS'}
-        crism_obs.load_data(crism_obs.info.basenameDF{1},crism_obs.info.dir_edr,'df1');
-        DFdata1 = crism_obs.data.df1;
-        crism_obs.load_data(crism_obs.info.basenameDF{2},crism_obs.info.dir_edr,'df2');
-        DFdata2 = crism_obs.data.df2;
-    case {'FRS','ATO'}
-        if ischar(crism_obs.info.basenameDF)
-            crism_obs.load_data(crism_obs.info.basenameDF,crism_obs.info.dir_edr,'df1');
-        elseif iscell(crism_obs.info.basenameDF)
-            crism_obs.load_data(crism_obs.info.basenameDF{1},crism_obs.info.dir_edr,'df1');
-        end
-        DFdata1 = crism_obs.data.df1;
-        DFdata2 = crism_obs.data.df1;
-    otherwise
-        error('Please define for other cases')
-end
-
-TRRIFdata.load_basenamesCDR();
-% read bad pixel data
-TRRIFdata.readCDR('BP');
-switch EDRdata.lbl.OBSERVATION_TYPE
-    case {'FRT','HRL','HRS'}
-        for i=1:length(TRRIFdata.cdr.BP)
-            bpdata = TRRIFdata.cdr.BP(i);
-            if ~any(strcmpi(EDRdata.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                if any(strcmpi(DFdata1.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                    BPdata1 = bpdata;
-                elseif any(strcmpi(DFdata2.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                    BPdata2 = bpdata;
-                end
-            else
-                BPdata_post = bpdata;
-            end
-        end
-    case {'FRS','ATO'}
-        % in case of FRS, DFdata1 and DFdata2 are same.
-        for i=1:length(TRRIFdata.cdr.BP)
-            bpdata = TRRIFdata.cdr.BP(i);
-            if ~any(strcmpi(EDRdata.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                if any(strcmpi(DFdata1.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                    BPdata1 = bpdata; BPdata2 = bpdata;
-                end
-            else
-                BPdata_post = bpdata;
-            end
-        end
-    otherwise
-        error('Undefined observation type %s.',EDRdata.lbl.OBSERVATION_TYPE);
-end
+[BPdata1,BPdata2,BPdata_post] = load_BPdataSC_fromDF(TRRIFdata,DFdata1.basename,DFdata2.basename);
 
 BPdata1.readimgi(); BPdata2.readimgi();
 BP_pri_bool = or(BPdata1.img,BPdata2.img);
@@ -404,7 +388,7 @@ if isdebug
     TRRIFdata_corr.readimgi();
     Yif_cat = TRRIFdata_corr.img;
 
-    Yif_cat = Yif_cat(lines,:,bands);
+    Yif_cat = Yif_cat(lls,:,bands);
     Yif_cat(Yif_cat<=1e-8) = nan;
     logYifc_cat = log(Yif_cat);
     logYifc_cat = permute(logYifc_cat,[3,1,2]);
@@ -415,7 +399,7 @@ if isdebug
     TRRRAIFdata_corr.readimgi();
     Yraif_cat = TRRRAIFdata_corr.img;
 
-    Yraif_cat = Yraif_cat(lines,:,bands);
+    Yraif_cat = Yraif_cat(lls,:,bands);
     Yraif_cat(Yraif_cat<=1e-8) = nan;
     logYraifc_cat = log(Yraif_cat);
     logYraifc_cat = permute(logYraifc_cat,[3,1,2]);
@@ -558,6 +542,8 @@ switch opt_img
         hdr_cr.cat_input_files = [basenameTRRY '.mat'];
     case 'TRRC'
         hdr_cr.cat_input_files = [basenameTRRC '.mat'];
+    case 'TRRB'
+        hdr_cr.cat_input_files = [basenameTRRB '.mat'];
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
@@ -582,7 +568,7 @@ fname_supple = joinPath(save_dir,[TRRIFdata.basename suffix '.mat']);
 wa = WAdata.img;
 wa = squeeze(wa)';
 fprintf('Saving %s ...\n',fname_supple);
-save(fname_supple,'wa','bands','lines','T_est','ancillaries','Valid_pixels');
+save(fname_supple,'wa','bands','lls','T_est','ancillaries','Valid_pixels');
 fprintf('Done\n');
 
 basename_Bg = [TRRIFdata.basename suffix '_Bg'];
