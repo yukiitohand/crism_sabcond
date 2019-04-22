@@ -1,4 +1,4 @@
-function [T_interpd] = crism_createTransmissionSpectrum(obs_id,opt_sabcond,varargin)
+function [T_interpd] = crism_createTransmissionSpectrum(TRRIFdata,opt_sabcond,varargin)
 
 % bands_opt = 4;
 
@@ -18,10 +18,10 @@ end
 
 % bands = genBands(bands_opt);
 
-crism_obs = CRISMObservationFRT(obs_id,'SENSOR_ID','L');
+% crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
 % crism_obs.load_data(crism_obs.info.basenameIF,crism_obs.info.dir_trdr,'if');
-crism_obs.load_default();
-TRRIFdata = crism_obs.data.if;
+% crism_obs.load_default();
+% TRRIFdata = crism_obs.data.if;
 TRRIFdata.load_basenamesCDR();
 TRRIFdata.readWAi();
 

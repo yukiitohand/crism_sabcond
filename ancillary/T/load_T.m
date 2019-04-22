@@ -23,7 +23,8 @@ function [ trans_spcs ] = load_T( varargin )
 %    'OVERWRITE' : whether or not to overwrite the cache file
 %                  (default) 0
 %
-global localCRISM_PDSrootDir
+global crism_env_vars
+
 
 t_mode = 2;
 adr_base = '';
