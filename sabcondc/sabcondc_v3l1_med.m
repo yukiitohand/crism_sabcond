@@ -224,11 +224,11 @@ if isdebug
     figure; ax_resv = subplot(1,1,1); hold(ax_resv,'off');movegui(gcf,'southeast');
 
     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName','iter=0');
-    for k=84
-        plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
-            'DisplayName',sprintf('iter=0;%d cat\n',k));
-        plot(ax_spc,wvc,exp(logYraifc_cat(:,k)),'Color',[0.5 0.5 0.5],...
-            'DisplayName',sprintf('iter=0;%d cat\n',k));
+    for k=391
+        %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
+        %    'DisplayName',sprintf('iter=0;%d cat\n',k));
+        %plot(ax_spc,wvc,exp(logYraifc_cat(:,k)),'Color',[0.5 0.5 0.5],...
+        %    'DisplayName',sprintf('iter=0;%d cat\n',k));
         hold(ax_spc,'on');
         l1 = plot(ax_spc,wvc_bprmvd,exp(spcs_bprmvd(:,k)),...
             'DisplayName',sprintf('iter=0;%d\n',k));
@@ -375,15 +375,15 @@ for j=2:nIter+1
         spcs_bprmvd = logYifc_bprmvd - A_bprmvd(:,1)*X(1,:);
         spc_r_bprmvd = logBg_bprmvd + logAB_bprmvd;
         plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName',sprintf('iter=%d',j));
-        for k=84
+        for k=391
             hold(ax_spc,'on');
-            plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
-                'DisplayName',sprintf('iter=0;%d cat\n',k));
+            %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
+            %    'DisplayName',sprintf('iter=0;%d cat\n',k));
             hold(ax_spc,'on');
             l1 = plot(ax_spc,wvc_bprmvd,exp(spcs_bprmvd(:,k)),...
                             'DisplayName',sprintf('iter=%d;%d\n',j,k));
             plot(ax_spc,wvc_bprmvd,exp(spc_r_bprmvd(:,k)),':','Color',l1.Color,...
-                            'DisplayName',sprintf('iter=0;%d m\n',k));
+                            'DisplayName',sprintf('iter=%d;%d m\n',j,k));
             plot(ax_spc,wvc_bprmvd,exp(logBg_bprmvd(:,k)),'--','Color',l1.Color,...
                 'DisplayName',sprintf('iter=%d;%d b\n',j,k));
         end
