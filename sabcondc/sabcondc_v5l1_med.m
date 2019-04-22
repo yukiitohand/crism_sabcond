@@ -15,12 +15,12 @@ function [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,ancill
 %   Output Parameters
 %     logt_est: initialized transmission spectrum [L x 1]
 
-maxiter_huwacb = 100;
+maxiter_huwacb = 1000;
 % tol_huwacb = 1e-4;
-tol_huwacb = 1e-4;
+tol_huwacb = 1e-5;
 verbose_huwacb = false;
 maxiter_lad = 1000;
-tol_lad = 1e-4;
+tol_lad = 1e-5;
 verbose_lad = false;
 nIter = 5;
 vis = 0;
@@ -107,8 +107,9 @@ logYifc_bprmvd_isnan_ori = logYifc_bprmvd_isnan; % save for later
 logYifc_bprmvd = interp_nan_column(logYifc_bprmvd,logYifc_bprmvd_isnan,wvc_bprmvd);
 Yifc_bprmvd = interp_nan_column(Yif(gp_bool,:),logYifc_bprmvd_isnan,wvc_bprmvd);
 
-logYifc_bprmvd_isnan_1nan = double(~logYifc_bprmvd_isnan);
-logYifc_bprmvd_isnan_1nan(logYifc_bprmvd_isnan) = nan;
+logYifc_bprmvd_good_1nan = double(~logYifc_bprmvd_isnan);
+logYifc_bprmvd_good_1nan(logYifc_bprmvd_isnan) = nan;
+logYifc_bprmvd_good_1nan_ori = logYifc_bprmvd_good_1nan;
 
 [L_bprmvd,Ny] = size(logYifc_bprmvd);
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/L_bprmvd) < 0.8;
@@ -134,9 +135,9 @@ T_bprmvd = T(gp_bool,:);
 T_bprmvd_mean = nanmean(T_bprmvd,2);
 
 %lambda_r_bprmvd = 1./stdl1_ifdf(gp_bool).*(mYif*mYif1)/400;
-%lambda_r_bprmvd = 1./stdl1_ifdf(gp_bool).*(mYif*mYif1)/(L_bprmvd*20);
-lambda_r_bprmvd = 1./stdl1_ifdf(gp_bool).*(mYif*mYif1).*T_bprmvd_mean./(L_bprmvd*40);
-% lambda_r_bprmvd(logYifc_bprmvd_isnan) = 0;
+lambda_r_bprmvd = 1./stdl1_ifdf(gp_bool).*(mYif*mYif1)/(L_bprmvd*40);
+% lambda_r_bprmvd = 1./stdl1_ifdf(gp_bool).*(mYif*mYif1).*T_bprmvd_mean./(L_bprmvd*40);
+lambda_r_bprmvd(logYifc_bprmvd_isnan) = 0;
 % lambda_r_bprmvd = lambda_r(gp_bool,:);
 % lambda_r_bprmvd = lambda_r_bprmvd;
 %lambda_r_bprmvd = lambda_r_bprmvd/L_bprmvd;
@@ -155,28 +156,45 @@ lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
 % lambda_c_bprmvd = 1e-8 * ones(size(C1,2),sum(vldpxl));
                            
 logBg_bprmvd = C1*Z1;
-logYifc_model_bprmvd = logBg_bprmvd + A_bprmvd*X1;
+% logYifc_model_bprmvd = logBg_bprmvd + A_bprmvd*X1;
 Xlib = X1(idxAlib,:); Xlogtc = X1(idxAlogtc,:);
 logAB_bprmvd = Alib_bprmvd*Xlib;
 R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
 res_bprmvd = R_bprmvd - A_bprmvd(:,idxAlogtc) * Xlogtc;
 %resNrm_bprmvd = nansum(nansum(lambda_r_bprmvd.*abs(res_bprmvd)));
-resNrm_bprmvd = nanmedian(lambda_r_bprmvd.*abs(res_bprmvd).*logYifc_bprmvd_isnan_1nan,'all');
+resNrm_bprmvd = nanmedian(lambda_r_bprmvd.*abs(res_bprmvd).*logYifc_bprmvd_good_1nan,'all');
 
 
 switch spike_detection_opt
     case 'original'
-        rr1 = logYifc_bprmvd_ori-logYifc_model_bprmvd;
-        rr1_std = nanstd(rr1,[],2);
-        logYifc_bprmvd_isnan = or( logYifc_bprmvd_isnan_ori, abs(rr1)>0.2 );
-         % if the standard deviation of the channel is small enough, bring back to good one.
-        logYifc_bprmvd_isnan(rr1_std<0.015,:) = false;
+        Ymodel_bprmvd = exp(logAB_bprmvd+logBg_bprmvd+logtc(gp_bool)*Xlogtc);
+        res_exp1 = Yifc_bprmvd - Ymodel_bprmvd;
+        mad_bprmvd_rr1 = robust_v3('med_abs_dev_from_med',res_exp1,2,'NOutliers',10);
+        mad_bprmvd_log1 = robust_v3('med_abs_dev_from_med',res_bprmvd,2,'NOutliers',10);
+        
+        % First step of de-noising is bad pixel detection.
+        % Our bad pixel detection is based on the median absolute deviation
+        % from the median. If that value is greater than a threshold, then
+        % that will be excluded.
+        % EXCEPTION
+        %  If the residual in the log domain has only a small variance,
+        %  then such pixels will be not considered as a bad pixel. The
+        %  pixel is likely to be the error of a multiplicative components
+        %  in the calibration.
+        logYifc_bprmvd_isnan_bp = false(size(Ymodel_bprmvd));
+        bp_est_bool = and(mad_bprmvd_rr1>0.001,mad_bprmvd_log1>0.005);
+        logYifc_bprmvd_isnan_bp(bp_est_bool,:) = true;
+        logYifc_bprmvd_isnan = or(logYifc_bprmvd_isnan_bp,logYifc_bprmvd_isnan_ori);
+        % for detection of temporal spikes are not evaluated to avoid bias
+        % caused by the initial transmission spectrum or inaccurate BK or
+        % BI.
+        
         % if the standard deviation of dark frames is small enough, bring back to good one.
-        logYifc_bprmvd_isnan(stdl1_ifdf(gp_bool)<0.0006,:) = false;
-        logYifc_bprmvd_isnan_1nan = double(~logYifc_bprmvd_isnan);
-        logYifc_bprmvd_isnan_1nan(logYifc_bprmvd_isnan) = nan;
-        lambda_r_bprmvd_new = 1./stdl1_ifdf(gp_bool).*(mYif*mYif1)./(L_bprmvd*40);
-%         lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
+%         logYifc_bprmvd_isnan(stdl1_ifdf(gp_bool)<0.0006,:) = false;
+        logYifc_bprmvd_good_1nan = double(~logYifc_bprmvd_isnan);
+        logYifc_bprmvd_good_1nan(logYifc_bprmvd_isnan) = nan;
+        %lambda_r_bprmvd_new = 1./mad_bprmvd_rr1.*(Ymodel_bprmvd)./(L_bprmvd*40)*3;
+        %lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
         lambda_c_bprmvd(logYifc_bprmvd_isnan) = 20;
         lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
         %logYifc_bprmvd = interp_nan_column_given(logYifc_bprmvd_ori,logYifc_bprmvd_isnan,logYifc_model_bprmvd);
@@ -192,18 +210,28 @@ Xlogtc_1d = sum(Xlogtc,1);
 r_lad = zeros(Ny,L_bprmvd); d_lad = zeros(Ny,L_bprmvd); Rhov_lad = ones(Ny,1);
 [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
     = wlad_gadmm_a_v2(Xlogtc_1d(:,vldpxl)', R_bprmvd(:,vldpxl)',...
-    'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,'lambda_r',lambda_r_bprmvd_new(:,vldpxl)');
+    'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);%,...
+%     'lambda_r',lambda_r_bprmvd_new(:,vldpxl)');
 logt_est_bprmvd = logt_est_bprmvd';
 %R_bprmvd_new = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
 resNew_bprmvd = R_bprmvd - logt_est_bprmvd*Xlogtc_1d;
 % resNewNrm_bprmvd = nansum(nansum(lambda_r_bprmvd_new.*abs(resNew_bprmvd)));
-resNewNrm_bprmvd = nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd).*logYifc_bprmvd_isnan_1nan,'all');
+% resNewNrm_bprmvd = nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan,'all');
 
 Ymodel_bprmvd = exp(logAB_bprmvd+logBg_bprmvd+logt_est_bprmvd*Xlogtc_1d);
 
-lambda_r_bprmvd_new = 1./stdl1_ifdf(gp_bool).*(Ymodel_bprmvd)./(L_bprmvd*40);
-% lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
+res_exp = Yifc_bprmvd - Ymodel_bprmvd;
+mad_bprmvd = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
+mad_expected = max(mad_bprmvd,stdl1_ifdf);
+coeff = nanmedian(1./stdl1_ifdf)./nanmedian(1./mad_expected);
+coeff = 1.75;
+% (L_bprmvd/(L_bprmvd-sum(bp_est_bool)))
+% lambda_r_bprmvd_new = 1./mad_expected.*(Ymodel_bprmvd)./((L_bprmvd-sum(bp_est_bool))*40);%.*coeff;
+lambda_r_bprmvd_new = 1./mad_expected.*(Ymodel_bprmvd)./((L_bprmvd-sum(bp_est_bool))*40).*coeff;
+lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
 
+%resNewNrm_bprmvd = nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan,'all');
+%resNrm_bprmvd2 = nanmedian(lambda_r_bprmvd.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan_ori,'all');
 
 %%
 if isdebug
@@ -228,11 +256,11 @@ if isdebug
     figure; ax_resv = subplot(1,1,1); hold(ax_resv,'off');movegui(gcf,'southeast');
 
     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName','iter=0');
-    for k=84
-        plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
-            'DisplayName',sprintf('iter=0;%d cat\n',k));
-        plot(ax_spc,wvc,exp(logYraifc_cat(:,k)),'Color',[0.5 0.5 0.5],...
-            'DisplayName',sprintf('iter=0;%d cat\n',k));
+    for k=433
+        %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
+        %    'DisplayName',sprintf('iter=0;%d cat\n',k));
+        %plot(ax_spc,wvc,exp(logYraifc_cat(:,k)),'Color',[0.5 0.5 0.5],...
+        %    'DisplayName',sprintf('iter=0;%d cat\n',k));
         hold(ax_spc,'on');
         l1 = plot(ax_spc,wvc_bprmvd,exp(spcs_bprmvd(:,k)),...
             'DisplayName',sprintf('iter=0;%d\n',k));
@@ -255,6 +283,129 @@ if isdebug
     drawnow;
 end
 
+%%
+% lambda_r_bprmvd = lambda_r_bprmvd_new;
+% [ X1(:,vldpxl),Z1(:,vldpxl),C1,~,D1(:,vldpxl),rho,Rhov,~] = huwacbwl1_gadmm_a_v2(...
+%     A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
+%     'LAMBDA_A',lambda_a_1,'Lambda_c',lambda_c_bprmvd(:,vldpxl),'lambda_r',lambda_r_bprmvd(:,vldpxl),...
+%     'tol',1e-5,'maxiter',1000,'verbose',1,'YNormalize',false);
+% 
+% % lambda_c_bprmvd = 1e-8 * ones(size(C1,2),sum(vldpxl));
+%                            
+% logBg_bprmvd = C1*Z1;
+% % logYifc_model_bprmvd = logBg_bprmvd + A_bprmvd*X1;
+% Xlib = X1(idxAlib,:); Xlogtc = X1(idxAlogtc,:);
+% logAB_bprmvd = Alib_bprmvd*Xlib;
+% R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
+% res_bprmvd = R_bprmvd - A_bprmvd(:,idxAlogtc) * Xlogtc;
+% %resNrm_bprmvd = nansum(nansum(lambda_r_bprmvd.*abs(res_bprmvd)));
+% resNrm_bprmvd = nanmedian(lambda_r_bprmvd.*abs(res_bprmvd).*logYifc_bprmvd_good_1nan,'all');
+% 
+% 
+% switch spike_detection_opt
+%     case 'original'
+%         Ymodel_bprmvd = exp(logAB_bprmvd+logBg_bprmvd+logtc(gp_bool)*Xlogtc);
+%         res_exp1 = Yifc_bprmvd - Ymodel_bprmvd;
+%         mad_bprmvd_rr1 = robust_v3('med_abs_dev_from_med',res_exp1,2,'NOutliers',10);
+%         mad_bprmvd_log1 = robust_v3('med_abs_dev_from_med',res_bprmvd,2,'NOutliers',10);
+%         
+%         % First step of de-noising is bad pixel detection.
+%         % Our bad pixel detection is based on the median absolute deviation
+%         % from the median. If that value is greater than a threshold, then
+%         % that will be excluded.
+%         % EXCEPTION
+%         %  If the residual in the log domain has only a small variance,
+%         %  then such pixels will be not considered as a bad pixel. The
+%         %  pixel is likely to be the error of a multiplicative components
+%         %  in the calibration.
+%         logYifc_bprmvd_isnan_bp = false(size(Ymodel_bprmvd));
+%         bp_est_bool = and(mad_bprmvd_rr1>0.001,mad_bprmvd_log1>0.005);
+%         logYifc_bprmvd_isnan_bp(bp_est_bool,:) = true;
+%         logYifc_bprmvd_isnan = or(logYifc_bprmvd_isnan_bp,logYifc_bprmvd_isnan_ori);
+%         % for detection of temporal spikes are not evaluated to avoid bias
+%         % caused by the initial transmission spectrum or inaccurate BK or
+%         % BI.
+%         
+%         % if the standard deviation of dark frames is small enough, bring back to good one.
+% %         logYifc_bprmvd_isnan(stdl1_ifdf(gp_bool)<0.0006,:) = false;
+%         logYifc_bprmvd_good_1nan = double(~logYifc_bprmvd_isnan);
+%         logYifc_bprmvd_good_1nan(logYifc_bprmvd_isnan) = nan;
+%         %lambda_r_bprmvd_new = 1./mad_bprmvd_rr1.*(Ymodel_bprmvd)./(L_bprmvd*40)*3;
+%         %lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
+%         lambda_c_bprmvd(logYifc_bprmvd_isnan) = 20;
+%         lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
+%         %logYifc_bprmvd = interp_nan_column_given(logYifc_bprmvd_ori,logYifc_bprmvd_isnan,logYifc_model_bprmvd);
+%         vldpxl = ~any(isnan(logYifc_bprmvd),1);
+%     otherwise 
+%         error('not implemented');
+% end
+% 
+% R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
+% 
+% 
+% Xlogtc_1d = sum(Xlogtc,1);
+% r_lad = zeros(Ny,L_bprmvd); d_lad = zeros(Ny,L_bprmvd); Rhov_lad = ones(Ny,1);
+% [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
+%     = wlad_gadmm_a_v2(Xlogtc_1d(:,vldpxl)', R_bprmvd(:,vldpxl)',...
+%     'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);%,...
+% %     'lambda_r',lambda_r_bprmvd_new(:,vldpxl)');
+% logt_est_bprmvd = logt_est_bprmvd';
+% %R_bprmvd_new = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
+% resNew_bprmvd = R_bprmvd - logt_est_bprmvd*Xlogtc_1d;
+% % resNewNrm_bprmvd = nansum(nansum(lambda_r_bprmvd_new.*abs(resNew_bprmvd)));
+% % resNewNrm_bprmvd = nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan,'all');
+% 
+% Ymodel_bprmvd = exp(logAB_bprmvd+logBg_bprmvd+logt_est_bprmvd*Xlogtc_1d);
+% 
+% res_exp = Yifc_bprmvd - Ymodel_bprmvd;
+% mad_bprmvd = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
+% mad_expected = max(mad_bprmvd,stdl1_ifdf);
+% %coeff = nansum(1./stdl1_ifdf)./nansum(1./mad_expected);
+% % (L_bprmvd/(L_bprmvd-sum(bp_est_bool)))
+% lambda_r_bprmvd_new = 1./mad_expected.*(Ymodel_bprmvd)./((L_bprmvd-sum(bp_est_bool))*40);%.*coeff;
+% lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
+% 
+% %resNewNrm_bprmvd = nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan,'all');
+% %resNrm_bprmvd2 = nanmedian(lambda_r_bprmvd.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan_ori,'all');
+% if isdebug
+%     spcs_bprmvd = logYifc_bprmvd - A_bprmvd(:,idxAlogtc)*Xlogtc;
+%     spcs_new = logYifc_bprmvd - logt_est_bprmvd*Xlogtc_1d;
+%     spc_r_bprmvd = logBg_bprmvd + logAB_bprmvd;
+%     logtc_best = nanmean((A_bprmvd(:,idxAlogtc)*Xlogtc)./sum(Xlogtc,1),2);
+%     diff_tList = [diff_tList logt_est_bprmvd-logtc_best];
+%     logt_estList = [logtc_best logt_est_bprmvd];
+% 
+%     RList = [RList vnorms(res_bprmvd,1,2)'];
+%     res_nrmList = [res_nrmList resNrm_bprmvd];
+% 
+%     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName','iter=0');
+%     for k=433
+%         %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
+%         %    'DisplayName',sprintf('iter=0;%d cat\n',k));
+%         %plot(ax_spc,wvc,exp(logYraifc_cat(:,k)),'Color',[0.5 0.5 0.5],...
+%         %    'DisplayName',sprintf('iter=0;%d cat\n',k));
+%         hold(ax_spc,'on');
+%         l1 = plot(ax_spc,wvc_bprmvd,exp(spcs_bprmvd(:,k)),...
+%             'DisplayName',sprintf('iter=0;%d\n',k));
+%         l2 = plot(ax_spc,wvc_bprmvd,exp(spcs_new(:,k)),...
+%             'DisplayName',sprintf('iter=0;%d\n',k));
+%         plot(ax_spc,wvc_bprmvd,exp(spc_r_bprmvd(:,k)),':','Color',l1.Color,...
+%             'DisplayName',sprintf('iter=0;%d m\n',k));
+%         plot(ax_spc,wvc_bprmvd,exp(logBg_bprmvd(:,k)),'Color',l1.Color,...
+%             'DisplayName',sprintf('iter=0;%d b\n',k));
+%         hold off
+% %             pause
+% 
+%     end
+%     hold(ax_spc,'off');
+%     plot(ax_dtr,wvc_bprmvd,diff_tList(:,1),'DisplayName','iter=0');
+%     plot(ax_res,res_nrmList);
+%     plot(ax_resv,wvc_bprmvd,res_bprmvd(:,:),'DisplayName','iter=0');
+%     plot(ax_mdtr,sqrt(mean(diff_tList.^2,1)));
+% 
+%     drawnow;
+% end
+
 %% mainloop to improve the estimate
 A_bprmvd = [logt_est_bprmvd Alib_bprmvd];
 X = [Xlogtc_1d;Xlib];
@@ -268,7 +419,9 @@ rho = ones([1,Ny]);
 
 % always update lambda_tmp
 
-% lambda_tmp = lambda_tmp*(resNewNrm_bprmvd/resNrm_bprmvd);
+% lambda_tmp = lambda_tmp*(resNrm_bprmvd2/resNewNrm_bprmvd);
+% lambda_tmp = lambda_tmp*...
+%    nanmedian(lambda_r_bprmvd_new.*logYifc_bprmvd_good_1nan,'all')./nanmedian(lambda_r_bprmvd.*logYifc_bprmvd_good_1nan_ori,'all');
 
 for j=2:nIter+1
     if isdebug
@@ -308,31 +461,66 @@ for j=2:nIter+1
                             'D0',D(:,vldpxl),'X0',X(:,vldpxl),...
                             'R0',rr(:,vldpxl),...
                             'rho',rho(:,vldpxl),'Rhov',Rhov,...
-                            'verbose',true,'tol',tol_huwacb,'maxiter',maxiter_huwacb); 
+                            'verbose',true,'tol',1e-5,'maxiter',maxiter_huwacb); 
     end
     
     logBg_bprmvd = C*Z;
     logAB_bprmvd = Alib_bprmvd*X(2:end,:);
-    logYifc_model_bprmvd = logBg_bprmvd + logAB_bprmvd + A_bprmvd(:,1)*X(1,:);
+    %logYifc_model_bprmvd = logBg_bprmvd + logAB_bprmvd + A_bprmvd(:,1)*X(1,:);
     
-    R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
-    res_bprmvd = R_bprmvd-A_bprmvd(:,1)*X(1,:);
+    % R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
+    % res_bprmvd = R_bprmvd-A_bprmvd(:,1)*X(1,:);
     %resNrm_bprmvd = nansum(nansum(lambda_r_bprmvd.*abs(res_bprmvd)));
-    resNrm_bprmvd = nanmedian(nanmedian(lambda_r_bprmvd.*abs(res_bprmvd)));
+    % resNrm_bprmvd = nanmedian(lambda_r_bprmvd.*abs(res_bprmvd).*logYifc_bprmvd_good_1nan,'all');
+    
     
     switch spike_detection_opt
         case 'original'
-            rr = logYifc_bprmvd-logYifc_model_bprmvd;
-            logYifc_bprmvd_isnan = or( logYifc_bprmvd_isnan_ori, abs(rr)>0.015 );
-            lambda_r_bprmvd_new = lambda_r_bprmvd;
+            Ymodel_bprmvd = exp(logAB_bprmvd+logBg_bprmvd+A_bprmvd(:,1)*X(1,:));
+            res_exp = Yifc_bprmvd - Ymodel_bprmvd;
+    %         rr1 = logYifc_bprmvd_ori-logYifc_model_bprmvd;
+            mad_bprmvd_rr = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
+            % rr1_std = nanstd(rr1,[],2);
+            %logYifc_bprmvd_isnan = or( logYifc_bprmvd_isnan_ori, abs(res_exp1)>0.01 );
+
+            % More rigid bad pixel detection
+            logYifc_bprmvd_isnan_bp = false(size(Ymodel_bprmvd));
+            logYifc_bprmvd_isnan_bp(mad_bprmvd_rr>0.001,:) = true;
+            
+            % Now perform temporal spike removal (assuming that bias problem is gone)
+            logYifc_bprmvd_isnan_spk = abs(res_exp)>0.0015;
+            
+            logYifc_bprmvd_isnan = or(or(logYifc_bprmvd_isnan_bp,logYifc_bprmvd_isnan_ori),...
+                logYifc_bprmvd_isnan_spk);
+
+            % if the standard deviation of dark frames is small enough, bring back to good one.
+    %         logYifc_bprmvd_isnan(stdl1_ifdf(gp_bool)<0.0006,:) = false;
+            logYifc_bprmvd_good_1nan = double(~logYifc_bprmvd_isnan);
+            logYifc_bprmvd_good_1nan(logYifc_bprmvd_isnan) = nan;
+            lambda_r_bprmvd_new = 1./mad_bprmvd_rr.*(Ymodel_bprmvd)./((L_bprmvd-sum(bp_est_bool))*40);
             lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
             lambda_c_bprmvd(logYifc_bprmvd_isnan) = 20;
             lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
-            % logYifc_bprmvd = interp_nan_column_given(logYifc_bprmvd_ori,logYifc_bprmvd_isnan,logYifc_model_bprmvd);
-            vldpxl = (sum(logYifc_bprmvd_isnan,1)/L_bprmvd) < 0.8;
+            %logYifc_bprmvd = interp_nan_column_given(logYifc_bprmvd_ori,logYifc_bprmvd_isnan,logYifc_model_bprmvd);
+            vldpxl = ~any(isnan(logYifc_bprmvd),1);
         otherwise 
             error('not implemented');
-    end   
+    end
+    
+    
+%     switch spike_detection_opt
+%         case 'original'
+%             rr = logYifc_bprmvd-logYifc_model_bprmvd;
+%             logYifc_bprmvd_isnan = or( logYifc_bprmvd_isnan_ori, abs(rr)>0.015 );
+%             lambda_r_bprmvd_new = lambda_r_bprmvd;
+%             lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
+%             lambda_c_bprmvd(logYifc_bprmvd_isnan) = 20;
+%             lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
+%             % logYifc_bprmvd = interp_nan_column_given(logYifc_bprmvd_ori,logYifc_bprmvd_isnan,logYifc_model_bprmvd);
+%             vldpxl = (sum(logYifc_bprmvd_isnan,1)/L_bprmvd) < 0.8;
+%         otherwise 
+%             error('not implemented');
+%     end   
 
     % remove nans
     
@@ -357,32 +545,32 @@ for j=2:nIter+1
     %R_bprmvdNew = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
     resNew_bprmvd = R_bprmvd - logt_est_bprmvd*X(1,:);
     %resNewNrm_bprmvd = nansum(nansum(lambda_r_bprmvd_new.*abs(resNew_bprmvd)));
-    resNewNrm_bprmvd = nanmedian(nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd)));
+    resNewNrm_bprmvd = nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan,'all');
     
     A_bprmvd(:,1) = logt_est_bprmvd;
     
-    lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
+    %lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
 
         
     if isdebug
         res_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd-A_bprmvd(:,1)*X(1,:);
         % resNrm_bprmvd = nansum(nansum(res_bprmvd.^2));
-        RList(:,j) = vnorms(res_bprmvd,1,2);
-        res_nrmList(j) = resNewNrm_bprmvd;
-        logt_estList(:,j+1) = logt_est_bprmvd;
-        diff_tList(:,j) = logt_est_bprmvd-logt_estList(:,j);
+        RList =[RList vnorms(res_bprmvd,1,2)'];
+        res_nrmList= [res_nrmList resNewNrm_bprmvd];
+        logt_estList = [logt_estList logt_est_bprmvd];
+        diff_tList = [diff_tList logt_est_bprmvd-logt_estList(:,end-1)];
         spcs_bprmvd = logYifc_bprmvd - A_bprmvd(:,1)*X(1,:);
         spc_r_bprmvd = logBg_bprmvd + logAB_bprmvd;
         plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName',sprintf('iter=%d',j));
-        for k=84
+        for k=433
             hold(ax_spc,'on');
-            plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
-                'DisplayName',sprintf('iter=0;%d cat\n',k));
+            %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
+            %    'DisplayName',sprintf('iter=0;%d cat\n',k));
             hold(ax_spc,'on');
             l1 = plot(ax_spc,wvc_bprmvd,exp(spcs_bprmvd(:,k)),...
                             'DisplayName',sprintf('iter=%d;%d\n',j,k));
             plot(ax_spc,wvc_bprmvd,exp(spc_r_bprmvd(:,k)),':','Color',l1.Color,...
-                            'DisplayName',sprintf('iter=0;%d m\n',k));
+                            'DisplayName',sprintf('iter=0;%d m\n',j,k));
             plot(ax_spc,wvc_bprmvd,exp(logBg_bprmvd(:,k)),'--','Color',l1.Color,...
                 'DisplayName',sprintf('iter=%d;%d b\n',j,k));
         end
