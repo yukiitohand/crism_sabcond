@@ -229,7 +229,7 @@ switch opt_img
 end
 
 
-basename_cr = [basenameIF suffix];
+% basename_cr = [basenameIF suffix];
 fpath_cr = joinPath(save_dir,[basename_cr,'.img']);
 if exist(fpath_cr,'file')
     if skip_ifexist
@@ -420,12 +420,23 @@ if isdebug
 end
 
 %% read ADR transmission data
-prop = getProp_basenameCDR4(WAdata.basename);
-% [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
-% [ at_trans ] = load_ADR_VS('t_mode',t_mode,'BINNING',prop.binning,...
-%                            'WAVELENGTH_FILTER',prop.wavelength_filter);
-[ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
-    'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
+% prop = getProp_basenameCDR4(WAdata.basename);
+% % [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
+% % [ at_trans ] = load_ADR_VS('t_mode',t_mode,'BINNING',prop.binning,...
+% %                            'WAVELENGTH_FILTER',prop.wavelength_filter);
+% [ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
+%     'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
+
+
+switch t_mode
+    case {1,2,3}
+        [ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
+                                   'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
+    case {4}
+        [ at_trans ] = load_T();
+    otherwise
+        error('Undefined t_mode %d',t_mode);
+end
 
 T = at_trans(:,:,bands);
 T(T<=1e-8) = nan;
@@ -564,14 +575,14 @@ fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
 envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
 fprintf('Done\n');
 
-fname_supple = joinPath(save_dir,[TRRIFdata.basename suffix '.mat']);
+fname_supple = joinPath(save_dir,[basename_cr '.mat']);
 wa = WAdata.img;
 wa = squeeze(wa)';
 fprintf('Saving %s ...\n',fname_supple);
 save(fname_supple,'wa','bands','lls','T_est','ancillaries','Valid_pixels');
 fprintf('Done\n');
 
-basename_Bg = [TRRIFdata.basename suffix '_Bg'];
+basename_Bg = [basename_cr '_Bg'];
 fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
 envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
 fprintf('Done\n');
@@ -580,7 +591,7 @@ envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
 fprintf('Done\n');
 
 
-basename_AB = [TRRIFdata.basename suffix '_AB'];
+basename_AB = [basename_cr '_AB'];
 fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
 envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
 fprintf('Done\n');
@@ -589,7 +600,7 @@ envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
 fprintf('Done\n');
 
 % residual
-basename_RR = [TRRIFdata.basename suffix '_RR'];
+basename_RR = [basename_cr '_RR'];
 fprintf('Saving %s ...\n',joinPath(save_dir, [basename_RR '.hdr']));
 envihdrwritex(hdr_cr,joinPath(save_dir, [basename_RR '.hdr']),'OPT_CMOUT',false);
 fprintf('Done\n');
