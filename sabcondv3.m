@@ -229,7 +229,7 @@ switch opt_img
 end
 
 
-% basename_cr = [basenameIF suffix];
+basename_cr = [basenameIF suffix];
 fpath_cr = joinPath(save_dir,[basename_cr,'.img']);
 if exist(fpath_cr,'file')
     if skip_ifexist

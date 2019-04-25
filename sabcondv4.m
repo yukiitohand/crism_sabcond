@@ -4,7 +4,7 @@ nIter = 5;
 vis = 0;
 lambda_a = 0.01;
 % band option
-opt_img = 'yuki_IoF';
+opt_img = 'TRRB';
 bands_opt = 3;
 % library options
 optCRISMspclib = 1;
@@ -27,9 +27,11 @@ gausssigma = 0.6;
 optBP = 'pri'; %{'pri','all','none'}
 skip_ifexist = false;
 
-global localCRISM_PDSrootDir
+ffc_counter = 1;
+lls = [];
 
-trry_pdir = joinPath(localCRISM_PDSrootDir,'./../YUK/');
+global crism_env_vars
+dir_yuk = crism_env_vars.dir_YUK;
 
 
 if (rem(length(varargin),2)==1)
@@ -37,6 +39,8 @@ if (rem(length(varargin),2)==1)
 else
     for i=1:2:(length(varargin)-1)
         switch upper(varargin{i})
+            case 'FFC_IF_COUNTER'
+                ffc_counter = varargin{i+1};
             case 'NITER'
                 nIter = varargin{i+1};
             case 'VIS'
@@ -120,31 +124,47 @@ diary(joinPath(save_pdir,fname));
 fprintf('Current directory:%s\n',pwd);
 
 %% Read image and ancillary data and format them for processing
-crism_obs = CRISMObservationFRT(obs_id,'SENSOR_ID','L');
-if ~isempty(crism_obs.info.basenameIF)
-    crism_obs.load_data(crism_obs.info.basenameIF,crism_obs.info.dir_trdr,'if');
-    TRRIFdata = crism_obs.data.if;
-    TRRIF_is_empty = false;
-else
-    TRRIFdata = '';
-    TRRIF_is_empty = true;
+crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
+% crism_obsS = CRISMObservation(obs_id,'SENSOR_ID','S');
+switch upper(crism_obs.info.obs_classType)
+    case {'FRT','HRL','HRS','FRS','ATO','MSP','HSP'}
+        if ~isempty(crism_obs.info.basenameIF)
+            TRRIF_is_empty = false;
+            TRRIFdata = CRISMdata(crism_obs.info.basenameIF,'');
+        elseif ~isempty(crism_obs.info.basenameRA)
+            TRRIF_is_empty = true;
+            TRRIFdata = CRISMdata(crism_obs.info.basenameRA,'');
+        else
+            error('Check data');
+        end
+    case {'FFC'}
+        switch ffc_counter
+            case 1
+                if ~isempty(crism_obs.info.basenameIF)
+                    TRRIF_is_empty = false;
+                    TRRIFdata = CRISMdata(crism_obs.info.basenameIF{1},'');
+                elseif ~isempty(crism_obs.info.basenameRA)
+                    TRRIF_is_empty = true;
+                    TRRIFdata = CRISMdata(crism_obs.info.basenameRA{1},'');
+                else
+                    error('Check data');
+                end
+            case 3
+                if ~isempty(crism_obs.info.basenameIF)
+                    TRRIF_is_empty = false;
+                    TRRIFdata = CRISMdata(crism_obs.info.basenameIF{2},'');
+                elseif ~isempty(crism_obs.info.basenameRA)
+                    TRRIF_is_empty = true;
+                    TRRIFdata = CRISMdata(crism_obs.info.basenameRA{2},'');
+                else
+                    error('Check data');
+                end
+            otherwise
+                error('Check data');
+        end
 end
-if ~isempty(crism_obs.info.basenameRA)
-    crism_obs.load_data(crism_obs.info.basenameRA,crism_obs.info.dir_trdr,'ra');
-    TRRRAdata = crism_obs.data.ra;
-else
-    TRRRAdata = '';
-end
-if ~isempty(crism_obs.info.basenameSC)
-    crism_obs.load_data(crism_obs.info.basenameSC,crism_obs.info.dir_edr,'sc');
-    EDRdata = crism_obs.data.sc;
-else
-    EDRdata = '';
-end
+[DFdata1,DFdata2] = get_DFdata4SC(TRRIFdata,crism_obs);
 
-if TRRIF_is_empty
-    TRRIFdata = TRRRAdata;
-end
 
 %%
 %-------------------------------------------------------------------------%
@@ -165,6 +185,49 @@ if TRRIF_is_empty
     propIF.activity_id = 'IF';
 end
 basenameIF = get_basenameOBS_fromProp(propIF);
+
+switch opt_img
+    case 'if'
+        basename_cr = [basenameIF suffix];
+    case 'ra_if'
+        basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
+%     case 'yuki_IoF'
+%         d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+%         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+%         prop.product_type = 'YUK';
+%         prop.version = 5;
+%         basenameYUK2 = get_basenameOBS_fromProp(prop);
+%         load(joinPath(d_IoF,[basenameYUK2 '.mat']),'IoF_woc');
+%         Yif = IoF_woc;
+%         clear IoF_woc;
+%         Yif = flip(Yif,3);
+%     case 'TRRY'
+%         d_IoF = joinPath(localCRISM_PDSrootDir,'./../YUK/', crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+%         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+%         prop.version = 'Y';
+%         basenameTRRY = get_basenameOBS_fromProp(prop);
+%         load(joinPath(d_IoF,[basenameTRRY '.mat']),'IoF_woc');
+%         Yif = IoF_woc;
+%         clear IoF_woc;
+%         Yif = flip(Yif,3);
+    case 'TRRY'
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = 'Y';
+        basenameTRRY = get_basenameOBS_fromProp(prop);
+        basename_cr = [basenameTRRY suffix];
+    case 'TRRB'
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = 'B';
+        basenameTRRB = get_basenameOBS_fromProp(prop);
+        basename_cr = [basenameTRRB suffix];
+    case 'TRRC'
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = 'C';
+        basenameTRRC = get_basenameOBS_fromProp(prop);
+        basename_cr = [basenameTRRC suffix];
+    otherwise
+        error('opt_img = %s is not defined',opt_img);
+end
 
 basename_cr = [basenameIF suffix];
 fpath_cr = joinPath(save_dir,[basename_cr,'.img']);
@@ -227,23 +290,37 @@ switch opt_img
     case 'ra_if'
         TRRRAIFdata = crism_obs.load_data([crism_obs.info.basenameRA '_IF'],crism_obs.info.dir_trdr,'ra_if');
         Yif = TRRRAIFdata.readimgi();
-    case 'yuki_IoF'
-        d_IoF = joinPath(localCRISM_PDSrootDir,'./../YUK/', crism_obs.info.yyyy_doy, crism_obs.info.dirname);
-        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
-        prop.product_type = 'YUK';
-        prop.version = 5;
-        basenameYUK2 = get_basenameOBS_fromProp(prop);
-        load(joinPath(d_IoF,[basenameYUK2 '.mat']),'IoF_woc');
-        Yif = IoF_woc;
-        clear IoF_woc;
-        Yif = flip(Yif,3);
+%     case 'yuki_IoF'
+%         d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+%         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+%         prop.product_type = 'YUK';
+%         prop.version = 5;
+%         basenameYUK2 = get_basenameOBS_fromProp(prop);
+%         load(joinPath(d_IoF,[basenameYUK2 '.mat']),'IoF_woc');
+%         Yif = IoF_woc;
+%         clear IoF_woc;
+%         Yif = flip(Yif,3);
+%     case 'TRRY'
+%         d_IoF = joinPath(localCRISM_PDSrootDir,'./../YUK/', crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+%         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+%         prop.version = 'Y';
+%         basenameTRRY = get_basenameOBS_fromProp(prop);
+%         load(joinPath(d_IoF,[basenameTRRY '.mat']),'IoF_woc');
+%         Yif = IoF_woc;
+%         clear IoF_woc;
+%         Yif = flip(Yif,3);
     case 'TRRY'
-        d_IoF = joinPath(trry_pdir, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
-        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
-        prop.version = 'Y';
-        basenameTRRY = get_basenameOBS_fromProp(prop);
+        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
         TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
         Yif = TRRYIFdata.readimgi();
+    case 'TRRB'
+        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        TRRBIFdata = CRISMdata(basenameTRRB,d_IoF);
+        Yif = TRRBIFdata.readimgi();
+    case 'TRRC'
+        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+        TRRCIFdata = CRISMdata(basenameTRRC,d_IoF);
+        Yif = TRRCIFdata.readimgi();
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
@@ -258,57 +335,8 @@ fprintf('finish loading Image\n');
 
 %%
 % read bad pixel
-switch EDRdata.lbl.OBSERVATION_TYPE
-    case {'FRT','HRL','HRS'}
-        crism_obs.load_data(crism_obs.info.basenameDF{1},crism_obs.info.dir_edr,'df1');
-        DFdata1 = crism_obs.data.df1;
-        crism_obs.load_data(crism_obs.info.basenameDF{2},crism_obs.info.dir_edr,'df2');
-        DFdata2 = crism_obs.data.df2;
-    case {'FRS','ATO'}
-        if ischar(crism_obs.info.basenameDF)
-            crism_obs.load_data(crism_obs.info.basenameDF,crism_obs.info.dir_edr,'df1');
-        elseif iscell(crism_obs.info.basenameDF)
-            crism_obs.load_data(crism_obs.info.basenameDF{1},crism_obs.info.dir_edr,'df1');
-        end
-        DFdata1 = crism_obs.data.df1;
-        DFdata2 = crism_obs.data.df1;
-    otherwise
-        error('Please define for other cases')
-end
+[BPdata1,BPdata2,BPdata_post] = load_BPdataSC_fromDF(TRRIFdata,DFdata1.basename,DFdata2.basename);
 
-TRRIFdata.load_basenamesCDR();
-EDRdata = crism_obs.data.sc;
-% read bad pixel data
-TRRIFdata.readCDR('BP');
-switch EDRdata.lbl.OBSERVATION_TYPE
-    case {'FRT','HRL','HRS'}
-        for i=1:length(TRRIFdata.cdr.BP)
-            bpdata = TRRIFdata.cdr.BP(i);
-            if ~any(strcmpi(EDRdata.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                if any(strcmpi(DFdata1.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                    BPdata1 = bpdata;
-                elseif any(strcmpi(DFdata2.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                    BPdata2 = bpdata;
-                end
-            else
-                BPdata_post = bpdata;
-            end
-        end
-    case {'FRS','ATO'}
-        % in case of FRS, DFdata1 and DFdata2 are same.
-        for i=1:length(TRRIFdata.cdr.BP)
-            bpdata = TRRIFdata.cdr.BP(i);
-            if ~any(strcmpi(EDRdata.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                if any(strcmpi(DFdata1.basename,bpdata.lbl.SOURCE_PRODUCT_ID))
-                    BPdata1 = bpdata; BPdata2 = bpdata;
-                end
-            else
-                BPdata_post = bpdata;
-            end
-        end
-    otherwise
-        error('Undefined observation type %s.',EDRdata.lbl.OBSERVATION_TYPE);
-end
 
 BPdata1.readimgi(); BPdata2.readimgi();
 BP_pri_bool = or(BPdata1.img,BPdata2.img);
@@ -392,10 +420,15 @@ if isdebug
 end
 
 %% read ADR transmission data
-prop = getProp_basenameCDR4(WAdata.basename);
-% [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
-[ at_trans ] = load_ADR_VS('t_mode',t_mode,'BINNING',prop.binning,...
-                           'WAVELENGTH_FILTER',prop.wavelength_filter);
+switch t_mode
+    case {1,2,3}
+        [ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
+                                   'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
+    case {4}
+        [ at_trans ] = load_T();
+    otherwise
+        error('Undefined t_mode %d',t_mode);
+end
 
 T = at_trans(:,:,bands);
 T(T<=1e-8) = nan;
