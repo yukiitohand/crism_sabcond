@@ -202,7 +202,9 @@ for i=1:length(WAbasenameList)
     [masterbase] = const_masterbase(libname,opt,wabasename,method,retainRatio);
     fprintf('Starting %s, current time: %s\n',wabasename,datetime());
     if isempty(cList)
-        cList = 1:hdrwa.samples;
+        cList = 1:WAdata.hdr.samples;
+    elseif i>1
+        cList = 1:WAdata.hdr.samples;
     end
     
     for c=cList
