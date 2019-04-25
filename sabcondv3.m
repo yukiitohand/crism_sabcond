@@ -124,7 +124,7 @@ fprintf('Current directory:%s\n',pwd);
 
 %% Read image and ancillary data and format them for processing
 crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
-crism_obsS = CRISMObservation(obs_id,'SENSOR_ID','S');
+% crism_obsS = CRISMObservation(obs_id,'SENSOR_ID','S');
 switch upper(crism_obs.info.obs_classType)
     case {'FRT','HRL','HRS','FRS','ATO','MSP','HSP'}
         if ~isempty(crism_obs.info.basenameIF)
