@@ -157,10 +157,16 @@ lambda_r_bprmvd(logYifc_bprmvd_isnan) = 0;
 %lambda_r_bprmvd = lambda_r_bprmvd/L_bprmvd;
 
 lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
-lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
+% lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
 lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
 % edge robust??
-lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
+% lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
+mad_expected_bprmvd = (stdl1_ifdf(gp_bool)+photon_mad(gp_bool,:))./(mYif*mYif1);
+% mad_expected_bprmvd_bad = mad_expected_bprmvd>0.01;
+% lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
+% lambda_c_bprmvd((L_bprmvd-3):(L_bprmvd-1),:) = mad_expected_bprmvd_bad((L_bprmvd-3):(L_bprmvd-1),:)*0.01;
+
+
 
 [ X1(:,vldpxl),Z1(:,vldpxl),C1,~,D1(:,vldpxl),rho,Rhov,~] = huwacbwl1_gadmm_a_v2(...
     A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
@@ -248,6 +254,16 @@ lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
 resNewNrm_bprmvd = nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan,'all');
 %resNrm_bprmvd2 = nanmedian(lambda_r_bprmvd.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan_ori,'all');
 
+lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
+% lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
+lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
+% edge robust??
+% mad_expected_bprmvd_bad = mad_expected./(Ymodel_bprmvd)>0.01;
+% lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
+% lambda_c_bprmvd((L_bprmvd-3):(L_bprmvd-1),:) = mad_expected_bprmvd_bad((L_bprmvd-3):(L_bprmvd-1),:)*0.01;
+
+
+
 %%
 if isdebug
     spcs_bprmvd = logYifc_bprmvd - A_bprmvd(:,idxAlogtc)*Xlogtc;
@@ -277,7 +293,7 @@ if isdebug
     bp_est_bool_1nan(bp_est_bool==0) = nan;
 
     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName','iter=0');
-    for k=396
+    for k=422
         %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
         %    'DisplayName',sprintf('iter=0;%d cat\n',k));
         %plot(ax_spc,wvc,exp(logYraifc_cat(:,k)),'Color',[0.5 0.5 0.5],...
@@ -534,6 +550,15 @@ for j=2:nIter+1
             logYifc_bprmvd_good_1nan(logYifc_bprmvd_isnan) = nan;
             lambda_r_bprmvd_new = 1./mad_expected.*(Ymodel_bprmvd)./((L_bprmvd-sum(bp_est_bool))*20);
             lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
+            
+            lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
+%             lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
+            lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
+            % edge robust??
+            %mad_expected_bprmvd_bad = mad_expected./(Ymodel_bprmvd)>0.01;
+            %lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
+            %lambda_c_bprmvd((L_bprmvd-3):(L_bprmvd-1),:) = mad_expected_bprmvd_bad((L_bprmvd-3):(L_bprmvd-1),:)*0.01;
+            
             % lambda_r_bprmvd_new(logYifc_bprmvd_isnan_ori) = 0;
             % lambda_r_bprmvd_new(logYifc_bprmvd_isnan_spk) = 0;
             % lambda_c_bprmvd(logYifc_bprmvd_isnan) = 20;
@@ -564,16 +589,16 @@ for j=2:nIter+1
     
     %update logt_est!
     R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
-    [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
-        = wlad_gadmm_a_v2(X(1,vldpxl)', R_bprmvd(:,vldpxl)',...
-           'lambda_r',lambda_r_bprmvd_new(:,vldpxl)',...
-           'X0',A_bprmvd(:,1)','D0',d_lad(vldpxl,:),...
-           'rho',rho_lad,'Rhov',Rhov_lad(vldpxl,:),...
-           'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
-    
 %     [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
-%     = wlad_gadmm_a_v2(X(1,vldpxl)', R_bprmvd(:,vldpxl)','lambda_r',lambda_r_bprmvd_new(:,vldpxl)',...
-%     'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
+%         = wlad_gadmm_a_v2(X(1,vldpxl)', R_bprmvd(:,vldpxl)',...
+%            'lambda_r',lambda_r_bprmvd_new(:,vldpxl)',...
+%            'X0',A_bprmvd(:,1)','D0',d_lad(vldpxl,:),...
+%            'rho',rho_lad,'Rhov',Rhov_lad(vldpxl,:),...
+%            'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
+    
+    [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
+    = wlad_gadmm_a_v2(X(1,vldpxl)', R_bprmvd(:,vldpxl)','lambda_r',lambda_r_bprmvd_new(:,vldpxl)',...
+    'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
        
     logt_est_bprmvd = logt_est_bprmvd';
 %     logt_est = update_logt_est(R,X(1,:));
@@ -611,7 +636,7 @@ for j=2:nIter+1
         bp_est_bool_1nan(bp_est_bool==0) = nan;
         
         plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName',sprintf('iter=%d',j));
-        for k=396
+        for k=422
             hold(ax_spc,'on');
             %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
             %    'DisplayName',sprintf('iter=0;%d cat\n',k));
@@ -645,6 +670,8 @@ logYifc_bprmvd_isnan = or(or(logYifc_bprmvd_isnan_bp,logYifc_bprmvd_isnan_ori),.
                 logYifc_bprmvd_isnan_spk);
 logYifc_bprmvd_good_1nan = double(~logYifc_bprmvd_isnan);
 logYifc_bprmvd_good_1nan(logYifc_bprmvd_isnan) = nan;
+
+% lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
 %% last iteration after estimating log_est
 rr = logYifc_bprmvd - A_bprmvd*X - C*Z;
 lambda_a_2(2:end) = lambda_tmp;
@@ -696,7 +723,7 @@ if isdebug
     bp_est_bool_1nan(bp_est_bool==0) = nan;
 
 %     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName',sprintf('iter=%d',j));
-    for k=396
+    for k=422
         hold(ax_spc,'on');
         %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
         %    'DisplayName',sprintf('iter=0;%d cat\n',k));
