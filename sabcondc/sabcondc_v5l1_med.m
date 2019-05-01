@@ -157,11 +157,11 @@ lambda_r_bprmvd(logYifc_bprmvd_isnan) = 0;
 %lambda_r_bprmvd = lambda_r_bprmvd/L_bprmvd;
 
 lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
-% lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
+lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
 lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
 % edge robust??
-% lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
-mad_expected_bprmvd = (stdl1_ifdf(gp_bool)+photon_mad(gp_bool,:))./(mYif*mYif1);
+lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
+% mad_expected_bprmvd = (stdl1_ifdf(gp_bool)+photon_mad(gp_bool,:))./(mYif*mYif1);
 % mad_expected_bprmvd_bad = mad_expected_bprmvd>0.01;
 % lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
 % lambda_c_bprmvd((L_bprmvd-3):(L_bprmvd-1),:) = mad_expected_bprmvd_bad((L_bprmvd-3):(L_bprmvd-1),:)*0.01;
@@ -254,14 +254,19 @@ lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
 resNewNrm_bprmvd = nanmedian(lambda_r_bprmvd_new.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan,'all');
 %resNrm_bprmvd2 = nanmedian(lambda_r_bprmvd.*abs(resNew_bprmvd).*logYifc_bprmvd_good_1nan_ori,'all');
 
-lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
+% lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
 % lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
-lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
+% lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
 % edge robust??
 % mad_expected_bprmvd_bad = mad_expected./(Ymodel_bprmvd)>0.01;
 % lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
 % lambda_c_bprmvd((L_bprmvd-3):(L_bprmvd-1),:) = mad_expected_bprmvd_bad((L_bprmvd-3):(L_bprmvd-1),:)*0.01;
 
+% lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
+% lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
+% lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
+% % edge robust??
+% lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
 
 
 %%
@@ -551,13 +556,19 @@ for j=2:nIter+1
             lambda_r_bprmvd_new = 1./mad_expected.*(Ymodel_bprmvd)./((L_bprmvd-sum(bp_est_bool))*20);
             lambda_r_bprmvd_new(logYifc_bprmvd_isnan) = 0;
             
-            lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
-%             lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
-            lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
+            %lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
+            %lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
+            %lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
             % edge robust??
-            %mad_expected_bprmvd_bad = mad_expected./(Ymodel_bprmvd)>0.01;
-            %lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
-            %lambda_c_bprmvd((L_bprmvd-3):(L_bprmvd-1),:) = mad_expected_bprmvd_bad((L_bprmvd-3):(L_bprmvd-1),:)*0.01;
+            %lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
+            
+             %lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
+             %lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
+             %lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
+            % edge robust??
+%             mad_expected_bprmvd_bad = mad_expected./(Ymodel_bprmvd)>0.01;
+%             lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
+%             lambda_c_bprmvd((L_bprmvd-3):(L_bprmvd-1),:) = mad_expected_bprmvd_bad((L_bprmvd-3):(L_bprmvd-1),:)*0.01;
             
             % lambda_r_bprmvd_new(logYifc_bprmvd_isnan_ori) = 0;
             % lambda_r_bprmvd_new(logYifc_bprmvd_isnan_spk) = 0;
