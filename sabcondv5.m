@@ -345,7 +345,7 @@ end
 % compute the weight for each dimension
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 switch TRRIFdata.lbl.OBSERVATION_TYPE
-    case {'FRT','HRL','HRS'}
+    case {'FRT','HRL','HRS','FFC'}
         % DFdata1 = CRISMdata(crism_obs.info.basenameDF{1},crism_obs.info.dir_edr);
         % DFdata2 = CRISMdata(crism_obs.info.basenameDF{2},crism_obs.info.dir_edr);
         Noutliers = 4;
@@ -363,7 +363,7 @@ end
 
 % load processed dark files
 switch TRRIFdata.lbl.OBSERVATION_TYPE
-    case {'FRT','HRL','HRS'}
+    case {'FRT','HRL','HRS','FFC'}
         propDF1_IF = DFdata1.prop;
         propDF1_IF.activity_id = 'IF';
         propDF1_IF.product_type = 'TRR';
@@ -441,7 +441,7 @@ end
 % mad_photon_from_med = permute(mad_photon_from_med(:,:,bands),[3,1,2]);
 [photon_noise_mad_stdif,WA_um_pitch] = estimate_photon_noise_CRISM(TRRYRAdata);
 % [mad_photon_from_med] = estimate_photon_noise(TRRYRAdata,DEdata);
-mad_photon_from_med = permute(photon_noise_mad_stdif(:,:,bands),[3,1,2]);
+mad_photon_from_med = permute(photon_noise_mad_stdif(lls,:,bands),[3,1,2]);
 
 WA_um_pitch = permute(WA_um_pitch(:,:,bands),[3,1,2]);
 
