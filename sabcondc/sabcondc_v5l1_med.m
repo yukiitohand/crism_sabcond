@@ -157,10 +157,10 @@ lambda_r_bprmvd(logYifc_bprmvd_isnan) = 0;
 %lambda_r_bprmvd = lambda_r_bprmvd/L_bprmvd;
 
 lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
-lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
+% lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
 lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
 % edge robust??
-lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
+% lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
 % mad_expected_bprmvd = (stdl1_ifdf(gp_bool)+photon_mad(gp_bool,:))./(mYif*mYif1);
 % mad_expected_bprmvd_bad = mad_expected_bprmvd>0.01;
 % lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
@@ -188,10 +188,11 @@ resNrm_bprmvd = nanmedian(lambda_r_bprmvd.*abs(res_bprmvd).*logYifc_bprmvd_good_
 switch spike_detection_opt
     case 'original'
         Ymodel_bprmvd = exp(logAB_bprmvd+logBg_bprmvd+logtc(gp_bool,:)*Xlogtc);
+        mad_bprmvd_rr1_theor = nanmedian(stdl1_ifdf(gp_bool)+photon_mad(gp_bool,:),2);
         res_exp1 = Yifc_bprmvd - Ymodel_bprmvd;
-        mad_bprmvd_rr1 = robust_v3('med_abs_dev_from_med',res_exp1,2,'NOutliers',10);
+        mad_bprmvd_rr1_prac = robust_v3('med_abs_dev_from_med',res_exp1,2,'NOutliers',10);
         mad_bprmvd_log1 = robust_v3('med_abs_dev_from_med',res_bprmvd,2,'NOutliers',10);
-        
+        mad_bprmvd_rr1 = max(mad_bprmvd_rr1_theor,mad_bprmvd_rr1_prac);
         % First step of de-noising is bad pixel detection.
         % Our bad pixel detection is based on the median absolute deviation
         % from the median. If that value is greater than a threshold, then
@@ -515,6 +516,11 @@ for j=2:nIter+1
     
     logBg_bprmvd = C*Z;
     logAB_bprmvd = Alib_bprmvd*X(2:end,:);
+    % correction of wavelength edges of background
+    logmd_surf_bprmvd = logAB_bprmvd+logBg_bprmvd;
+    [logmdl_surf_edge_cor_bprmvd] = correct_edge_channels(wvc_bprmvd,logmd_surf_bprmvd,logYifc_bprmvd_isnan);
+    logBg_bprmvd = logmdl_surf_edge_cor_bprmvd-logAB_bprmvd;
+    
     %logYifc_model_bprmvd = logBg_bprmvd + logAB_bprmvd + A_bprmvd(:,1)*X(1,:);
     
     % R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
@@ -531,7 +537,10 @@ for j=2:nIter+1
             Ymodel_bprmvd = exp(logAB_bprmvd+logBg_bprmvd+A_bprmvd(:,1)*X(1,:));
             res_exp = Yifc_bprmvd - Ymodel_bprmvd;
     %         rr1 = logYifc_bprmvd_ori-logYifc_model_bprmvd;
-            mad_bprmvd_rr = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
+            mad_bprmvd_rr_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
+            
+            mad_bprmvd_rr = max(mad_bprmvd_rr1_theor,mad_bprmvd_rr_prac);
+            
             mad_expected = max(repmat(mad_bprmvd,[1 Ny]),(stdl1_ifdf(gp_bool)+photon_mad_new));
             % mad_expected = max(mad_bprmvd_rr,stdl1_ifdf);
             % rr1_std = nanstd(rr1,[],2);
@@ -600,16 +609,16 @@ for j=2:nIter+1
     
     %update logt_est!
     R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
-%     [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
-%         = wlad_gadmm_a_v2(X(1,vldpxl)', R_bprmvd(:,vldpxl)',...
-%            'lambda_r',lambda_r_bprmvd_new(:,vldpxl)',...
-%            'X0',A_bprmvd(:,1)','D0',d_lad(vldpxl,:),...
-%            'rho',rho_lad,'Rhov',Rhov_lad(vldpxl,:),...
-%            'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
-    
     [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
-    = wlad_gadmm_a_v2(X(1,vldpxl)', R_bprmvd(:,vldpxl)','lambda_r',lambda_r_bprmvd_new(:,vldpxl)',...
-    'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
+        = wlad_gadmm_a_v2(X(1,vldpxl)', R_bprmvd(:,vldpxl)',...
+           'lambda_r',lambda_r_bprmvd_new(:,vldpxl)',...
+           'X0',A_bprmvd(:,1)','D0',d_lad(vldpxl,:),...
+           'rho',rho_lad,'Rhov',Rhov_lad(vldpxl,:),...
+           'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
+    
+%     [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
+%     = wlad_gadmm_a_v2(X(1,vldpxl)', R_bprmvd(:,vldpxl)','lambda_r',lambda_r_bprmvd_new(:,vldpxl)',...
+%     'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
        
     logt_est_bprmvd = logt_est_bprmvd';
 %     logt_est = update_logt_est(R,X(1,:));
@@ -705,10 +714,14 @@ lambda_r_bprmvd = lambda_r_bprmvd_new;
 %                             'rho',rho(:,vldpxl),'Rhov',Rhov,...
 %                             'verbose',verbose_huwacb,...
 %                             'tol',tol_huwacb,'maxiter',maxiter_huwacb);
+logAB_bprmvd = Alib_bprmvd*X(2:end,:);
+logmd_surf_bprmvd = logAB_bprmvd+logBg_bprmvd;
+[logmdl_surf_edge_cor_bprmvd] = correct_edge_channels(wvc_bprmvd,logmd_surf_bprmvd,logYifc_bprmvd_isnan);
+logBg_bprmvd = logmdl_surf_edge_cor_bprmvd-logAB_bprmvd;
 
 % original wavelength channels
 logBg = nan(size(logYifc));
-logBg(gp_bool,:) = C*Z;
+logBg(gp_bool,:) = logBg_bprmvd;
 
 logAB = Alib*X(2:end,:);
 
@@ -716,8 +729,8 @@ logt_est = nan(size(logYifc,1),1);
 logt_est(gp_bool) = A_bprmvd(:,1);
 
 if isdebug
-    logBg_bprmvd = C*Z;
-    logAB_bprmvd = Alib_bprmvd*X(2:end,:);
+%     logBg_bprmvd = C*Z;
+    % logAB_bprmvd = Alib_bprmvd*X(2:end,:);
     res_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd-A_bprmvd(:,1)*X(1,:);
     % resNrm_bprmvd = nansum(nansum(res_bprmvd.^2));
     RList =[RList vnorms(res_bprmvd,1,2)'];
@@ -759,8 +772,6 @@ if isdebug
 %     plot(ax_mdtr,sqrt(mean(diff_tList.^2,1)));
     drawnow;
 end
-
-
 
 % corrected spectra
 logYifc_cor = nan(size(logYifc));

@@ -539,6 +539,14 @@ for c=1:nCall
         else
             logtc = logT(:,:,c);
         end
+        
+        switch bands_opt
+            case 4
+                logtc(1:5,:) = 0; % force to be zeros. 
+            otherwise
+                error('logt suppression is not defined for bands_opt %d',bands_opt);
+        end
+        
         tic;
         [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
 
