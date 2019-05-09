@@ -124,44 +124,21 @@ fprintf('Current directory:%s\n',pwd);
 
 %% Read image and ancillary data and format them for processing
 crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
-% crism_obsS = CRISMObservation(obs_id,'SENSOR_ID','S');
 switch upper(crism_obs.info.obs_classType)
     case {'FRT','HRL','HRS','FRS','ATO','MSP','HSP'}
-        if ~isempty(crism_obs.info.basenameIF)
-            TRRIF_is_empty = false;
-            TRRIFdata = CRISMdata(crism_obs.info.basenameIF,'');
-        elseif ~isempty(crism_obs.info.basenameRA)
-            TRRIF_is_empty = true;
-            TRRIFdata = CRISMdata(crism_obs.info.basenameRA,'');
-        else
-            error('Check data');
-        end
+        TRRIFdata = get_CRISMdata(crism_obs.info.basenameIF,'');
+        TRRRAdata = get_CRISMdata(crism_obs.info.basenameRA,'');
+        DDRdata = get_CRISMdata(crism_obs.info.basenameDDR,'');
     case {'FFC'}
-        switch ffc_counter
-            case 1
-                if ~isempty(crism_obs.info.basenameIF)
-                    TRRIF_is_empty = false;
-                    TRRIFdata = CRISMdata(crism_obs.info.basenameIF{1},'');
-                elseif ~isempty(crism_obs.info.basenameRA)
-                    TRRIF_is_empty = true;
-                    TRRIFdata = CRISMdata(crism_obs.info.basenameRA{1},'');
-                else
-                    error('Check data');
-                end
-            case 3
-                if ~isempty(crism_obs.info.basenameIF)
-                    TRRIF_is_empty = false;
-                    TRRIFdata = CRISMdata(crism_obs.info.basenameIF{2},'');
-                elseif ~isempty(crism_obs.info.basenameRA)
-                    TRRIF_is_empty = true;
-                    TRRIFdata = CRISMdata(crism_obs.info.basenameRA{2},'');
-                else
-                    error('Check data');
-                end
-            otherwise
-                error('Check data');
-        end
+        [TRRIFdata] = get_scene_CRISMdata_FFC(crism_obs.info.basenameIF,'',ffc_counter);
+        [TRRRAdata] = get_scene_CRISMdata_FFC(crism_obs.info.basenameRA,'',ffc_counter);
+        [DDRdata] = get_scene_CRISMdata_FFC(crism_obs.info.basenameDDR,'',ffc_counter);
 end
+TRRIF_is_empty = isempty(TRRIFdata);
+if TRRIF_is_empty
+    TRRIFdata = TRRRAdata;
+end
+
 [DFdata1,DFdata2] = get_DFdata4SC(TRRIFdata,crism_obs);
 
 %%
