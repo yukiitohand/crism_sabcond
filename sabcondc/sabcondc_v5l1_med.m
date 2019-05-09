@@ -155,12 +155,13 @@ lambda_r_bprmvd(logYifc_bprmvd_isnan) = 0;
 % lambda_r_bprmvd = lambda_r(gp_bool,:);
 % lambda_r_bprmvd = lambda_r_bprmvd;
 %lambda_r_bprmvd = lambda_r_bprmvd/L_bprmvd;
+% lambda_r_bprmvd([1:4 (L_bprmvd-3):(L_bprmvd)],:) = 0.00001;
 
 lambda_c_bprmvd = 1e-8 * ones(L_bprmvd,Ny);
 % lambda_c_bprmvd(logYifc_bprmvd_isnan) = 0.01;
 lambda_c_bprmvd([1,L_bprmvd],:) = 0; % no weight for edges
 % edge robust??
-% lambda_c_bprmvd([2:4,(L_bprmvd-3):(L_bprmvd-1)],:) = 0.5;
+% lambda_c_bprmvd([2:5,(L_bprmvd-4):(L_bprmvd-1)],:) = 0.0ds1;
 % mad_expected_bprmvd = (stdl1_ifdf(gp_bool)+photon_mad(gp_bool,:))./(mYif*mYif1);
 % mad_expected_bprmvd_bad = mad_expected_bprmvd>0.01;
 % lambda_c_bprmvd(2:6,:) = mad_expected_bprmvd_bad(2:6,:)*0.01;
@@ -179,6 +180,11 @@ logBg_bprmvd = C1*Z1;
 % logYifc_model_bprmvd = logBg_bprmvd + A_bprmvd*X1;
 Xlib = X1(idxAlib,:); Xlogtc = X1(idxAlogtc,:);
 logAB_bprmvd = Alib_bprmvd*Xlib;
+logmdl_surf_bprmvd = logAB_bprmvd+logBg_bprmvd;
+[logmdl_surf_edge_cor_bprmvd] = correct_edge_channels_polyfit(wvc_bprmvd,logmdl_surf_bprmvd);
+logBg_bprmvd = logmdl_surf_edge_cor_bprmvd-logAB_bprmvd;
+
+
 R_bprmvd = logYifc_bprmvd - logBg_bprmvd - logAB_bprmvd;
 res_bprmvd = R_bprmvd - A_bprmvd(:,idxAlogtc) * Xlogtc;
 %resNrm_bprmvd = nansum(nansum(lambda_r_bprmvd.*abs(res_bprmvd)));
@@ -299,7 +305,7 @@ if isdebug
     bp_est_bool_1nan(bp_est_bool==0) = nan;
 
     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName','iter=0');
-    for k=422
+    for k=398
         %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
         %    'DisplayName',sprintf('iter=0;%d cat\n',k));
         %plot(ax_spc,wvc,exp(logYraifc_cat(:,k)),'Color',[0.5 0.5 0.5],...
@@ -517,8 +523,9 @@ for j=2:nIter+1
     logBg_bprmvd = C*Z;
     logAB_bprmvd = Alib_bprmvd*X(2:end,:);
     % correction of wavelength edges of background
-    logmd_surf_bprmvd = logAB_bprmvd+logBg_bprmvd;
-    [logmdl_surf_edge_cor_bprmvd] = correct_edge_channels(wvc_bprmvd,logmd_surf_bprmvd,logYifc_bprmvd_isnan);
+    logmdl_surf_bprmvd = logAB_bprmvd+logBg_bprmvd;
+    [logmdl_surf_edge_cor_bprmvd] = correct_edge_channels_polyfit(wvc_bprmvd,logmdl_surf_bprmvd);
+    [logmdl_surf_edge_cor_bprmvd] = correct_edge_channels_bprep(wvc_bprmvd,logmdl_surf_edge_cor_bprmvd,logYifc_bprmvd_isnan);
     logBg_bprmvd = logmdl_surf_edge_cor_bprmvd-logAB_bprmvd;
     
     %logYifc_model_bprmvd = logBg_bprmvd + logAB_bprmvd + A_bprmvd(:,1)*X(1,:);
@@ -553,7 +560,7 @@ for j=2:nIter+1
             
             % Now perform temporal spike removal (assuming that bias problem is gone)
             res_exp_scaled = res_exp./(exp(A_bprmvd(:,1)).^X(1,:));
-            logYifc_bprmvd_isnan_spk = abs(res_exp)>0.0015;
+            logYifc_bprmvd_isnan_spk = abs(res_exp_scaled)>0.0015;
             
             logYifc_bprmvd_isnan = or(or(logYifc_bprmvd_isnan_bp,logYifc_bprmvd_isnan_ori),...
                 logYifc_bprmvd_isnan_spk);
@@ -656,7 +663,7 @@ for j=2:nIter+1
         bp_est_bool_1nan(bp_est_bool==0) = nan;
         
         plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName',sprintf('iter=%d',j));
-        for k=422
+        for k=398
             hold(ax_spc,'on');
             %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
             %    'DisplayName',sprintf('iter=0;%d cat\n',k));
@@ -715,8 +722,9 @@ lambda_r_bprmvd = lambda_r_bprmvd_new;
 %                             'verbose',verbose_huwacb,...
 %                             'tol',tol_huwacb,'maxiter',maxiter_huwacb);
 logAB_bprmvd = Alib_bprmvd*X(2:end,:);
-logmd_surf_bprmvd = logAB_bprmvd+logBg_bprmvd;
-[logmdl_surf_edge_cor_bprmvd] = correct_edge_channels(wvc_bprmvd,logmd_surf_bprmvd,logYifc_bprmvd_isnan);
+logmdl_surf_bprmvd = logAB_bprmvd+logBg_bprmvd;
+[logmdl_surf_edge_cor_bprmvd] = correct_edge_channels_polyfit(wvc_bprmvd,logmdl_surf_bprmvd);
+[logmdl_surf_edge_cor_bprmvd] = correct_edge_channels_bprep(wvc_bprmvd,logmdl_surf_edge_cor_bprmvd,logYifc_bprmvd_isnan);
 logBg_bprmvd = logmdl_surf_edge_cor_bprmvd-logAB_bprmvd;
 
 % original wavelength channels
@@ -747,7 +755,7 @@ if isdebug
     bp_est_bool_1nan(bp_est_bool==0) = nan;
 
 %     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName',sprintf('iter=%d',j));
-    for k=422
+    for k=398
         hold(ax_spc,'on');
         %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
         %    'DisplayName',sprintf('iter=0;%d cat\n',k));
