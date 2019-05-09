@@ -2,7 +2,7 @@ function [Yif_cor,Bg_est,AB_est,T_est,Yif_cor_nr,Yif_cor_ori,...
     Yif_isnan,RR_ori,Valid_pixels,ancillary,infoAall,valid_idx,GP]...
     = sabcondv5_columntest(obs_id,cList,varargin)
 % huwacb option
-nIter = 5;
+nIter = 1;
 vis = 0;
 lambda_a = 0.01;
 % band option
@@ -91,6 +91,7 @@ crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
 TRRIFdata = load_CRISMdata(crism_obs.info.basenameIF,crism_obs.info.dir_trdr);
 TRRRAdata = load_CRISMdata(crism_obs.info.basenameRA,crism_obs.info.dir_trdr);
 EDRdata = load_CRISMdata(crism_obs.info.basenameSC,crism_obs.info.dir_edr);
+DEdata = load_CRISMdata(crism_obs.info.basenameDDR,crism_obs.info.dir_ddr);
 
 if isempty(TRRIFdata)
     TRRIFdata = TRRRAdata;
@@ -145,9 +146,14 @@ switch lower(opt_img)
         trr_vr = 'C';
         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
         prop.version = trr_vr;
-        basenameTRRB = get_basenameOBS_fromProp(prop);
-        TRRBIFdata = CRISMdata(basenameTRRB,d_yuk_trr);
-        Yif = TRRBIFdata.readimgi();
+        basenameTRRC = get_basenameOBS_fromProp(prop);
+        TRRCIFdata = CRISMdata(basenameTRRC,d_yuk_trr);
+        Yif = TRRCIFdata.readimgi();
+        
+        propYRA = getProp_basenameOBSERVATION(TRRRAdata.basename);
+        propYRA.version = trr_vr;
+        bnameYRA = get_basenameOBS_fromProp(propYRA);
+        TRRYRAdata = CRISMdata(bnameYRA,d_yuk_trr);
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
@@ -256,6 +262,53 @@ for cd = 1:nCall
     ifdfstd_self(:,:,cd) = std_df(:);
 end
 
+%% Estimate the amount of photon noise
+% TRRIFdata.load_basenamesCDR();
+% d_km = TRRIFdata.lbl.SOLAR_DISTANCE{1};
+% [ d_au ] = km2au( d_km );
+% 
+% 
+% h_planck = 6.626070040 * 10^(-34);
+% c_light = 299792458;
+% 
+% integ_t = TRRIFdata.lbl.MRO_EXPOSURE_PARAMETER;
+% rateHz = TRRIFdata.lbl.MRO_FRAME_RATE{1};
+% [tms] = get_integrationTime(integ_t,rateHz,'Hz');
+% tsec = tms/1000;
+% 
+% sr = pi*(0.05.^2) / (3.0*10^5)^2;
+% ifov_along_track = (3*10^5)/0.441 * 27*10^(-6);
+% ifov_cross_track = (3*10^5)/0.441 * 27*10^(-6);
+% A = ifov_cross_track*ifov_along_track;
+% 
+% eta = 0.8;
+% 
+% TRRYRAdata.load_basenamesCDR();
+% TRRYRAdata.readimgi();
+% WAdata = TRRYRAdata.readCDR('WA');
+% WA = WAdata.readimgi();
+% SFdata = TRRIFdata.readCDR('SF');
+% SFdata.readimgi();
+% photon_cts = TRRYRAdata.img * (A*sr*tsec) *6.55*10^(-3) ./ ((h_planck*c_light) ./ (WA.*10^(-9))) * eta;
+% 
+% std_rad = TRRYRAdata.img ./ sqrt(photon_cts);
+% std_if = std_rad .* pi ./ SFdata.img .* (d_au.^2);
+% 
+% mad_photon_from_med = std_if .* norminv(0.75);
+% 
+% mad_photon_from_med = permute(mad_photon_from_med(:,:,bands),[3,1,2]);
+[photon_noise_mad_stdif,WA_um_pitch] = estimate_photon_noise_CRISM(TRRYRAdata);
+% [mad_photon_from_med] = estimate_photon_noise(TRRYRAdata,DEdata);
+mad_photon_from_med = permute(photon_noise_mad_stdif(:,:,bands),[3,1,2]);
+
+WA_um_pitch = permute(WA_um_pitch(:,:,bands),[3,1,2]);
+
+SFdata = TRRYRAdata.readCDR('SF');
+SFimg = SFdata.readimgi();
+SFimg = permute(SFimg(:,:,bands),[3,1,2]);
+
+%%
+% WA = squeeze(WA(:,:,bands))';
 
 %%
 if isdebug
@@ -350,7 +403,8 @@ for ci=1:nCLength
         [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,ancillary,rr_ori_c,vldpxl_c]...
             = sabcondc_v5l1_med(Alib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...
               'LAMBDA_A',lambda_a,'NITER',nIter,'VIS',vis,'T',T,'Yif',Yif(:,:,c),'stdl1_ifdf',ifdfstd_self(:,:,c),...
-              'debug',true,'BP_pri',BP_pri1nan(bands,c),'BP_All',BP_post1nan(bands,c));
+              'debug',true,'BP_pri',BP_pri1nan(bands,c),'BP_All',BP_post1nan(bands,c),...
+              'Photon_mad',mad_photon_from_med(:,:,c),'LBL',TRRYRAdata.lbl,'SFimgc',SFimg(:,:,c),'WA_UM_PITCH',WA_um_pitch(:,:,c));
     %                 'LOGYIFC_CAT',logYifc_cat(:,:,c));%'LOGYRAIFC_CAT',logYraifc_cat(:,:,c));
         logmodel = logBg + logAB;
         logYif_cor_nr = logYifc_cor;
