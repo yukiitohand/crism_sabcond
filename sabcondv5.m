@@ -494,7 +494,8 @@ switch t_mode
         [ at_trans ] = load_ADR_VS('BINNING',propWA.binning,...
                                    'WAVELENGTH_FILTER',propWA.wavelength_filter);
     case {4}
-        [ at_trans ] = load_T();
+        sclk_img = (TRRIFdata.get_sclk_start()+TRRIFdata.get_sclk_stop())/2;
+        [ at_trans ] = load_T_sclk_closest(sclk_img);
         at_trans = bin_image_frames(at_trans,'binning',propWA.binning);
     otherwise
         error('Undefined t_mode %d',t_mode);
