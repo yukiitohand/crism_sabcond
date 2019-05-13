@@ -64,8 +64,9 @@ function [] = crism_libConvoluter(libname,opt,varargin)
 %   Output
 %      none
 %   crism_libConvoluter('CRISMTypeLib',2,'METHOD','interp1','WV_BIN','3');
+global crism_env_vars
+localCRISM_PDSrootDir = crism_env_vars.localCRISM_PDSrootDir;
 
-global localCRISM_PDSrootDir
 if nargin<2
     fprintf('Usage: [] = crism_libConvoluter(libname,opt,varargin)\n');
     return;
