@@ -58,6 +58,10 @@ cntRmvl = 1;
 cntRmvl_ice = 0;
 additional_suffix = '';
 
+if ~isfield(TRRIFdata.basenamesCDR,'WA')
+    TRRIFdata.load_basenamesCDR();
+end
+
 Alibdir = joinPath(localCRISM_PDSrootDir,'cache/WA/',TRRIFdata.basenamesCDR.WA);
 
 if (rem(length(varargin),2)==1)
@@ -104,7 +108,7 @@ end
 %
 basename_cr = [TRRIFdata.basename suffix];
 fname_supple = joinPath(save_dir, [TRRIFdata.basename suffix '.mat']);
-load(fname_supple,'wa','bands','lines','T_est');
+load(fname_supple,'wa','bands','T_est');
 
 % wa = crim.img.cdr.WA;
 % wa = squeeze(wa)';
@@ -123,7 +127,7 @@ info_sabcond.cntRmvl_ice = cntRmvl_ice;
 info_sabcond.basenameWA = TRRIFdata.basenamesCDR.WA;
 info_sabcond.wa = wa;
 info_sabcond.bands = bands;
-info_sabcond.lines = lines;
+% info_sabcond.lines = lines;
 info_sabcond.T_est = T_est;
 info_sabcond.basename = basename_cr;
 info_sabcond.save_dir = save_dir;
