@@ -58,6 +58,10 @@ cntRmvl = 1;
 cntRmvl_ice = 0;
 additional_suffix = '';
 
+if isempty(TRRIFdata.basenamesCDR)
+    TRRIFdata.load_basenamesCDR();
+end
+
 if ~isfield(TRRIFdata.basenamesCDR,'WA')
     TRRIFdata.load_basenamesCDR();
 end
