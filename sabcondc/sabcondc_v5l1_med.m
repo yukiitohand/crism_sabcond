@@ -305,7 +305,7 @@ if isdebug
     bp_est_bool_1nan(bp_est_bool==0) = nan;
 
     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName','iter=0');
-    for k=398
+    for k=57
         %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
         %    'DisplayName',sprintf('iter=0;%d cat\n',k));
         %plot(ax_spc,wvc,exp(logYraifc_cat(:,k)),'Color',[0.5 0.5 0.5],...
@@ -663,7 +663,7 @@ for j=2:nIter+1
         bp_est_bool_1nan(bp_est_bool==0) = nan;
         
         plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName',sprintf('iter=%d',j));
-        for k=398
+        for k=57
             hold(ax_spc,'on');
             %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
             %    'DisplayName',sprintf('iter=0;%d cat\n',k));
@@ -755,7 +755,7 @@ if isdebug
     bp_est_bool_1nan(bp_est_bool==0) = nan;
 
 %     plot(ax_tr,wvc_bprmvd,logt_est_bprmvd,'DisplayName',sprintf('iter=%d',j));
-    for k=398
+    for k=57
         hold(ax_spc,'on');
         %plot(ax_spc,wvc,exp(logYifc_cat(:,k)),'Color','k',...
         %    'DisplayName',sprintf('iter=0;%d cat\n',k));
