@@ -30,6 +30,8 @@ lls = [];
 
 precision = 'double';
 
+gpu = false;
+
 global crism_env_vars
 dir_yuk = crism_env_vars.dir_YUK;
 
@@ -82,6 +84,8 @@ else
                 lls = varargin{i+1};
             case 'PRECISION'
                 precision = varargin{i+1};
+            case 'GPU'
+                gpu = varargin{i+1};
             otherwise
                 error('Unrecognized option: %s',varargin{i});
         end
@@ -309,7 +313,7 @@ for c = 1:nCall
           
         [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
             = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...
-              'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision);
+              'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu);
 
         Yif_cor(lBool,c,bBool) = reshape(logYifc_cor',[nL,1,nB]);
         Yif_cor_ori(lBool,c,bBool) = reshape(logYifc_cor_ori',[nL,1,nB]);
