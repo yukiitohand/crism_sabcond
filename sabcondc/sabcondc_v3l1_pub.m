@@ -21,6 +21,7 @@ lambda_a = 0.01;
 verbose_huwacb = 'no';
 isdebug = false;
 gp = [];
+precision = 'double';
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -53,6 +54,8 @@ else
                 verbose_lad = varargin{i+1};
             case 'DEBUG'
                 isdebug = varargin{i+1};
+            case 'PRECISION'
+                precision = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
@@ -89,17 +92,18 @@ logYifc_bprmvd = interp_nan_column(logYifc_bprmvd,logYifc_bprmvd_isnan,wvc_bprmv
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.8;
 
 %% initialization of logt_est
-lambda_a_1 = zeros(1,N_A1);
+lambda_a_1 = zeros(1,N_A1,precision);
 lambda_tmp = lambda_a;
 % lambda_a_1(idxAlibstrt:end) = lambda_tmp;
 lambda_a_1(idxAlib) = lambda_tmp;
 
-X1 = nan(N_A1,Ny); Z1 = nan(B_bprmvd,Ny); D1 = nan(N_A1+B_bprmvd*2,Ny);
+X1 = nan(N_A1,Ny,precision); Z1 = nan(B_bprmvd,Ny,precision); 
+D1 = nan(N_A1+B_bprmvd*2,Ny,precision);
 
 [ X1(:,vldpxl),Z1(:,vldpxl),C1,~,D1(:,vldpxl),rho,Rhov,~] ...
     = huwacbl1_admm_gat_a_cpu(A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
     'LAMBDA_A',lambda_a_1,'tol',1e-5,'maxiter',maxiter_huwacb,...
-    'verbose',verbose_huwacb);
+    'verbose',verbose_huwacb,'precision',precision);
 
 logYifc_model_bprmvd = A_bprmvd*X1+C1*Z1;
 % noise detection and replacement
@@ -116,10 +120,11 @@ resNrm_bprmvd = nansum(abs(RR_bprmvd),'all');
 RR_bprmvd = RR_bprmvd + A_bprmvd(:,idxAlogtc) * X1(idxAlogtc,:);
 
 Xlogtc_1d = sum(X1(idxAlogtc,:),1);
-r_lad = zeros(Ny,B_bprmvd); d_lad = zeros(Ny+1,B_bprmvd); Rhov_lad = ones(1+Ny,1);
+r_lad = zeros(Ny,B_bprmvd,precision); d_lad = zeros(Ny+1,B_bprmvd,precision);
+Rhov_lad = ones(1+Ny,1,precision);
 [logt_est_bprmvd,r_lad(vldpxl,:),d_lad([true vldpxl],:),rho_lad,Rhov_lad([true vldpxl],:),~,~,cost_val]...
-    = lad_gadmm_b_v2(Xlogtc_1d(:,vldpxl)', RR_bprmvd(:,vldpxl)',...
-             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
+    = lad_admm_gat_b_cpu(Xlogtc_1d(:,vldpxl)', RR_bprmvd(:,vldpxl)',...
+             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,'PRECISION',precision);
 % r_lad = zeros(Ny,B_bprmvd); d_lad = zeros(Ny,B_bprmvd); Rhov_lad = ones(Ny,1);
 % [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
 %     = lad_gadmm_a_v2(Xlogtc_1d(:,vldpxl)', RR_bprmvd(:,vldpxl)',...
@@ -136,7 +141,7 @@ resNewNrm_bprmvd = nansum(abs(RR_bprmvd),'all');
 A_bprmvd = [logt_est_bprmvd Alib_bprmvd];
 X = [Xlogtc_1d;X1(idxAlib,:)];
 % D = [sum(D1(idxAlogtc,:),1);D1(idxAlib,:)];
-D = [zeros(1,size(D1,2)); D1(idxAlibstrt:end,:)];
+D = [zeros(1,size(D1,2),precision); D1(idxAlibstrt:end,:)];
 C = C1;
 Z = Z1;
 lambda_a_2 = zeros(1,1+Nlib);
@@ -160,14 +165,16 @@ for j=2:nIter+1
                             'LAMBDA_A',lambda_a_2,'CONCAVEBASE',C,'Z0',Z(:,vldpxl),...
                             'D0',D(:,vldpxl),'X0',X(:,vldpxl),...
                             'R0',RR_bprmvd(:,vldpxl),...
-                            'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb);
+                            'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
+                            'PRECISION',precision);
     else
        [ X(:,vldpxl),Z(:,vldpxl),C,~,D(:,vldpxl),rho(:,vldpxl),Rhov ]...
            = huwacbl1_admm_gat_a_cpu(A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
                             'LAMBDA_A',lambda_a_2,'CONCAVEBASE',C,'Z0',Z(:,vldpxl),...
                             'D0',D(:,vldpxl),'X0',X(:,vldpxl),...
                             'R0',RR_bprmvd(:,vldpxl),'rho',rho(:,vldpxl),'Rhov',Rhov,...
-                            'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb); 
+                            'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+                            'PRECISION',precision);
     end
     
     %logBg_bprmvd = C*Z;
@@ -187,8 +194,8 @@ for j=2:nIter+1
     %update logt_est!
     RR_bprmvd = RR_bprmvd + A_bprmvd(:,1)*X(1,:);
     [logt_est_bprmvd,r_lad(vldpxl,:),d_lad([true vldpxl],:),rho_lad,Rhov_lad([true vldpxl],:),~,~,cost_val]...
-            = lad_gadmm_b_v2(X(1,vldpxl)', RR_bprmvd(:,vldpxl)','rho',rho_lad,'Rhov',Rhov_lad([true vldpxl],:),...
-            'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
+            = lad_admm_gat_b_cpu(X(1,vldpxl)', RR_bprmvd(:,vldpxl)','rho',rho_lad,'Rhov',Rhov_lad([true vldpxl],:),...
+            'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,'PRECISION',precision);
     % [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
     %     = lad_gadmm_a_v2(X(1,vldpxl)', RR_bprmvd(:,vldpxl)',...
     %     'X0',A_bprmvd(:,1)','R0',r_lad(vldpxl,:),'D0',d_lad(vldpxl,:),...
@@ -218,22 +225,22 @@ end
                             'D0',D(:,vldpxl),'X0',X(:,vldpxl),'R0',RR_bprmvd(:,vldpxl),...
                             'rho',rho(:,vldpxl),'Rhov',Rhov,...
                             'verbose',verbose_huwacb,...
-                            'tol',tol_huwacb,'maxiter',maxiter_huwacb);
+                            'tol',tol_huwacb,'maxiter',maxiter_huwacb,'PRECISION',precision);
 
 %%
 % original wavelength channels
-logBg = nan(B,Ny); logBg(gp_bool,:) = C*Z;
+logBg = nan(B,Ny,precision); logBg(gp_bool,:) = C*Z;
 logAB = Alib*X(2:end,:);
 
-logt_est = nan(B,1); logt_est(gp_bool) = A_bprmvd(:,1);
+logt_est = nan(B,1,precision); logt_est(gp_bool) = A_bprmvd(:,1);
 
 % corrected spectra
-logYifc_cor = nan(B,Ny);
+logYifc_cor = nan(B,Ny,precision);
 logYifc_bprmvd(logYifc_bprmvd_isnan) = nan;
 logYifc_cor(gp_bool,:) = logYifc_bprmvd - A_bprmvd(:,1)*X(1,:);
 
 % corrected spectra
-logYifc_cor_ori = nan(B,Ny);
+logYifc_cor_ori = nan(B,Ny,precision);
 logYifc_cor_ori(gp_bool,:) = logYifc_bprmvd_ori - A_bprmvd(:,1)*X(1,:);
 
 logYifc_isnan = true(B,Ny);
@@ -243,7 +250,7 @@ logYifc_isnan(gp_bool,:) = logYifc_bprmvd_isnan;
 logBg = interp_nan_column(logBg,logYifc_isnan,wvc);
 
 % residual
-rr_ori = nan(B,Ny);
+rr_ori = nan(B,Ny,precision);
 rr_ori(gp_bool,:) = logYifc_bprmvd_ori - logAB(gp_bool,:) - logBg(gp_bool,:) - A_bprmvd(:,1)*X(1,:);
 
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.7;
