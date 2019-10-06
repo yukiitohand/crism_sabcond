@@ -483,7 +483,7 @@ for c = Columns_valid
     end
 end
 
-batch_size = 20;
+batch_size = 1;
 n_batch = ceil(length(Columns_valid)/batch_size);
 
 BP = isnan(GP);

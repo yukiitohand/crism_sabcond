@@ -67,6 +67,8 @@ else
                 verbose_lad = varargin{i+1};
             case 'THRESHOLD_BADSPC'
                 th_badspc = varargin{i+1};
+            case 'PRECISION'
+                precision = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
@@ -89,7 +91,7 @@ end
 % nans due to harse noise.
 logYif_isnan = isnan(logYif);
 % replace those values with linear interpolation
-logYif = interp_nan_column(logYif,logYif_isnan,WA);
+% logYif = interp_nan_column(logYif,logYif_isnan,WA);
 % mark bad spectra
 badspc = (sum(logYif_isnan,1)/B) > 0.5;
 
@@ -99,6 +101,7 @@ logYif_isnan = or(logYif_isnan,badspc);
 
 % save the original bad entries for future use.
 logYif_isnan_ori = logYif_isnan;
+logYif(logYif_isnan) = 0;
 for i=1:S
     logYif(:,:,i) = interp_nan_column(logYif(:,:,i),logYif_isnan(:,:,i),WA(:,i));
 end
@@ -132,11 +135,12 @@ c2_z = zeros([Nc,1],precision,'gpuArray');
 c2_z(1) = -inf; c2_z(Nc) = -inf;
 
 % main computation
-[ X,Z,D,rho,Rhov,~,~,cost_val]...
+tic; 
+[ X,Z,~,D,rho,Rhov,~,~,cost_val]...
     = huwacbl1_admm_gat_a_batch(A,logYif,C,'LAMBDA_A',lambda_a2,...
             'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'C2_Z',c2_z,......
             'tol',1e-5,'maxiter',maxiter_huwacb,'verbose',verbose_huwacb,...
-            'precision',precision);
+            'precision',precision); toc;
 
 % evaluate bad pixels
 RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
@@ -158,7 +162,7 @@ RR  = RR + pagefun(@mtimes,logT,X(1:Ntc,:,:));
 Xtc = sum(X(1:Ntc,:,:),1);
 [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
        = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-            'lambda_r',lambda_r','tol',tol_lad,'maxiter',maxiter_lad,...
+            'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
             'verbose',verbose_lad,'precision',precision);
 %
 logt_est = permute(logt_est,[2,1,3]);
@@ -170,31 +174,32 @@ resNewNrm = nansum(abs(lambda_r .* RR),'all');
 % main loop
 %-------------------------------------------------------------------------%
 A = cat(2,logt_est,Alib);
-X = cat(1,Xtc,X(idxAlib,:,:));
-D = cat(1,zeros(1,L,S,precision,'gpuArray'),D(idxAlibstrt:end,:,:));
-lambda_a_2 = zeros(1,1+Nlib,M,precision,'gpuArray');
-rho = ones([1,Ny,M],precision,'gpuArray');
+X = cat(1,Xtc,X(1+Ntc:end,:,:));
+D = cat(1,zeros(1,L,S,precision,'gpuArray'),D(1+Ntc:end,:,:));
+lambda_a_2 = zeros(1+Nlib,1,S,precision,'gpuArray');
+rho = ones([1,L,S],precision,'gpuArray');
 lambda_tmp = lambda_a;
 % always update lambda_tmp
 lambda_tmp = lambda_tmp*resNewNrm/resNrm;
 
 for n=1:nIter
     lambda_a_2(2:end) = lambda_tmp;
-    if n==2
-        [ X,Z,C,~,D,rho,Rhov ]...
-            = huwacbl1_admm_gat_(A,logYif,C,...
+    tic;
+    if n==1
+        [ X,Z,~,D,rho,Rhov,~,~,cost_val ]...
+            = huwacbl1_admm_gat_a_batch(A,logYif,C,...
                 'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
                 'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...
                 'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
                 'PRECISION',precision);
     else
-       [ X,Z,C,~,D,rho,Rhov ] = huwacbl1_admm_gat_a(A,logYif,C,...
+       [ X,Z,~,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,logYif,C,...
           'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
           'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
           'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
           'PRECISION',precision);
     end
-    
+    toc;
     % evaluate bad pixels
     RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
     logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.015 );
@@ -208,11 +213,11 @@ for n=1:nIter
     
     % update logt_est
     RR  = RR + pagefun(@mtimes,A(:,1,:),X(1,:,:));
-    [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
+    tic; [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
        = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-            'X0',A(:,1)','R0',r_lad,'D0',d_lad,'rho',rho_lad,'Rhov',Rhov_lad,...
-            'lambda_r',lambda_r,'tol',tol_lad,'maxiter',maxiter_lad,...
-            'verbose',verbose_lad,'precision',precision);
+            'rho',rho_lad,'Rhov',Rhov_lad,...
+            'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
+            'verbose',verbose_lad,'precision',precision); toc;
     logt_est = permute(logt_est,[2,1,3]);
     RR = RR - pagefun(@mtimes,logt_est,X(1,:,:));
     resNewNrm = nansum(abs(lambda_r .* RR),'all');
@@ -227,7 +232,7 @@ end
 %-------------------------------------------------------------------------%
 % last iteration
 %-------------------------------------------------------------------------%
-[ X,Z,C,~,D,rho,Rhov ] = huwacbl1_admm_gat_a(A,logYif,C,...
+[ X,Z,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,logYif,C,...
       'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
       'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
       'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
@@ -237,7 +242,9 @@ end
 logAB        = pagefun(@mtimes,Alib,X(2:end,:,:));
 logBg        = pagefun(@mtimes,C,Z);
 logt_est     = A(:,1,:);
-logYif_cor   = logYif - pagefun(logt_est,X(1,:,:));
+logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:));
+
+[logYif_cor,logt_est,logAB,logBg,logYif_isnan,X] = gather(logYif_cor,logt_est,logAB,logBg,logYif_isnan,X);
 
 
 end

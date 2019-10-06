@@ -21,7 +21,7 @@ maxiter_huwacb = 100;
 tol_huwacb = 1e-4;
 maxiter_lad = 1000;
 tol_lad = 1e-4;
-verbose_lad = 'no';
+verbose_lad = 'yes';
 nIter = 5;
 lambda_a = 0.01;
 verbose_huwacb = 'no';
@@ -141,6 +141,7 @@ switch lower(mode_lad)
         r_lad = zeros(Ny,L_bprmvd); d_lad = zeros(Ny+1,L_bprmvd); Rhov_lad = ones(1+Ny,1);
         [logt_est_bprmvd,r_lad(vldpxl,:),d_lad([true vldpxl],:),rho_lad,Rhov_lad([true vldpxl],:),~,~,cost_val]...
             = lad_gadmm_b_v2_gpu_v2(Xlogtc_1d(:,vldpxl)', R_bprmvd(:,vldpxl)',...
+                     'X0',A_bprmvd(:,1)','R0',r_lad(vldpxl,:),'D0',d_lad([true vldpxl],:),...
                      'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
 %         [logt_est_bprmvd_a,~,~,~,~,~,~,cost_val_b]...
 %                 = lad_gadmm_b_v2_gpu_v2(Xlogtc_1d(:,vldpxl)', R_bprmvd(:,vldpxl)',...
