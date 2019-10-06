@@ -15,11 +15,11 @@ function [logYif_cor,logt_est,logAB,logBg,logYif_isnan,X] = sabcondc_v3l1_gpu_ba
 
 % OUTPUTS
 
-logYif = gpuArray(logYif);
-WA     = gpuArray(WA);
-Alib   = gpuArray(Alib);
-logT   = gpuArray(logT);
-BP     = gpuArray(BP);
+% logYif = gpuArray(logYif);
+% WA     = gpuArray(WA);
+% Alib   = gpuArray(Alib);
+% logT   = gpuArray(logT);
+% BP     = gpuArray(BP);
 
 % [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,X,vldpxl]
 
@@ -112,8 +112,10 @@ end
 %-------------------------------------------------------------------------%
 A = cat(2,logT,Alib);
 % compute concave basese beforehand
-C = concaveOperator_v2(WA);
-Dinv = pagefun(@mldivide,C,eye(B,'gpuArray'));
+C = concaveOperator(WA);
+Dinv = C \ eye(B);
+%C = concaveOperator_v2(WA);
+%Dinv = pagefun(@mldivide,C,eye(B,'gpuArray'));
 s_d = vnorms(Dinv,1);
 C = Dinv./s_d;
 clear Dinv s_d;
@@ -123,15 +125,20 @@ if strcmpi(precision,'single')
 end
 
 % create lambdas
-lambda_c = zeros(B,L,S,precision,'gpuArray');
-lambda_a2 = zeros(Nlib+Ntc,L,S,precision,'gpuArray');
-lambda_r = ones(B,L,S,precision,'gpuArray');
+lambda_c = zeros(B,L,S,precision);
+lambda_a2 = zeros(Nlib+Ntc,L,S,precision);
+lambda_a2(:,1+Ntc:end,:) = lambda_a;
+lambda_r = ones(B,L,S,precision);
+% lambda_c = zeros(B,L,S,precision,'gpuArray');
+% lambda_a2 = zeros(Nlib+Ntc,L,S,precision,'gpuArray');
+% lambda_r = ones(B,L,S,precision,'gpuArray');
 
 % 
 lambda_c(logYif_isnan) = inf;
 lambda_r(logYif_isnan) = 0;
 
-c2_z = zeros([Nc,1],precision,'gpuArray');
+c2_z = zeros([Nc,1],precision);
+% c2_z = zeros([Nc,1],precision,'gpuArray');
 c2_z(1) = -inf; c2_z(Nc) = -inf;
 
 % main computation
