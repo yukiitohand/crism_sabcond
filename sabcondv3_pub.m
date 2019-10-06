@@ -31,6 +31,7 @@ lls = [];
 precision = 'double';
 
 gpu = false;
+verbose = 0;
 
 global crism_env_vars
 dir_yuk = crism_env_vars.dir_YUK;
@@ -86,6 +87,8 @@ else
                 precision = varargin{i+1};
             case 'GPU'
                 gpu = varargin{i+1};
+            case 'VERBOSE'
+                verbose = varargin{i+1};
             otherwise
                 error('Unrecognized option: %s',varargin{i});
         end
@@ -287,6 +290,26 @@ ancillaries = struct('X',cell(1,nCall),'lambda',cell(1,nCall),'nIter',cell(1,nCa
 Yif_cor_ori = nan([nLall,nCall,nBall],precision);
 Valid_pixels = false([nLall,nCall]);
 
+switch verbose
+    case 0
+        verbose_lad = 'no';
+        verbose_huwacb = 'no';
+        debug_huwacb = false;
+        debug_lad = false;
+    case 1
+        verbose_lad = 'yes';
+        verbose_huwacb = 'yes';
+        debug_huwacb = false;
+        debug_lad = false;
+    case 2
+        verbose_lad = 'yes';
+        verbose_huwacb = 'yes';
+        debug_huwacb = true;
+        debug_lad = true;
+    otherwise
+        error('VIS=%d is not defined',verbose);
+end
+
 for c = 1:nCall
     % ADR data is filtered, so the spectra at edges are removed.
     if ~all(isnan(WA(:,c)))
@@ -313,7 +336,9 @@ for c = 1:nCall
           
         [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
             = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...
-              'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu);
+              'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
+              'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+              'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb);
 
         Yif_cor(lBool,c,bBool) = reshape(logYifc_cor',[nL,1,nB]);
         Yif_cor_ori(lBool,c,bBool) = reshape(logYifc_cor_ori',[nL,1,nB]);

@@ -16,10 +16,11 @@ tol_huwacb = 1e-4;
 maxiter_lad = 1000;
 tol_lad = 1e-4;
 verbose_lad = 'no';
+debug_lad = false;
 nIter = 5;
 lambda_a = 0.01;
 verbose_huwacb = 'no';
-isdebug = false;
+debug_huwacb = false;
 gp = [];
 precision = 'double';
 gpu = false;
@@ -53,8 +54,10 @@ else
                 tol_lad = varargin{i+1};
             case 'VERBOSE_LAD'
                 verbose_lad = varargin{i+1};
-            case 'DEBUG'
-                isdebug = varargin{i+1};
+            case 'DEBUG_HUWACB'
+                debug_huwacb = varargin{i+1};
+            case 'DEBUG_LAD'
+                debug_lad = varargin{i+1};
             case 'PRECISION'
                 precision = varargin{i+1};
             case 'GPU'
@@ -103,10 +106,10 @@ lambda_a_1(idxAlib) = lambda_tmp;
 X1 = nan(N_A1,Ny,precision); Z1 = nan(B_bprmvd,Ny,precision); 
 D1 = nan(N_A1+B_bprmvd*2,Ny,precision);
 
-[ X1(:,vldpxl),Z1(:,vldpxl),C1,~,D1(:,vldpxl),rho,Rhov,~] ...
+[ X1(:,vldpxl),Z1(:,vldpxl),C1,~,D1(:,vldpxl),rho,Rhov,~,~,cost_val] ...
     = huwacbl1_admm_gat_a(A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
     'LAMBDA_A',lambda_a_1,'tol',1e-5,'maxiter',maxiter_huwacb,...
-    'verbose',verbose_huwacb,'precision',precision,'gpu',gpu);
+    'verbose',verbose_huwacb,'precision',precision,'gpu',gpu,'debug',debug_huwacb);
 
 logYifc_model_bprmvd = A_bprmvd*X1+C1*Z1;
 % noise detection and replacement
@@ -123,15 +126,12 @@ resNrm_bprmvd = nansum(abs(RR_bprmvd),'all');
 RR_bprmvd = RR_bprmvd + A_bprmvd(:,idxAlogtc) * X1(idxAlogtc,:);
 
 Xlogtc_1d = sum(X1(idxAlogtc,:),1);
-r_lad = zeros(Ny,B_bprmvd,precision); d_lad = zeros(Ny+1,B_bprmvd,precision);
+% r_lad = zeros(Ny,B_bprmvd,precision); d_lad = zeros(Ny+1,B_bprmvd,precision);
 Rhov_lad = ones(1+Ny,1,precision);
-[logt_est_bprmvd,r_lad(vldpxl,:),d_lad([true vldpxl],:),rho_lad,Rhov_lad([true vldpxl],:),~,~,cost_val]...
+[logt_est_bprmvd,~,~,rho_lad,Rhov_lad([true vldpxl],:),~,~,cost_val]...
     = lad_admm_gat_b(Xlogtc_1d(:,vldpxl)', RR_bprmvd(:,vldpxl)',...
-             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,'PRECISION',precision,'gpu',gpu);
-% r_lad = zeros(Ny,B_bprmvd); d_lad = zeros(Ny,B_bprmvd); Rhov_lad = ones(Ny,1);
-% [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
-%     = lad_gadmm_a_v2(Xlogtc_1d(:,vldpxl)', RR_bprmvd(:,vldpxl)',...
-%                 'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
+             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
+             'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
 
 logt_est_bprmvd = logt_est_bprmvd';
 RR_bprmvd = RR_bprmvd - logt_est_bprmvd*Xlogtc_1d;
@@ -157,9 +157,6 @@ clear X1 Z1 C1 D1;
 lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
 
 for j=2:nIter+1
-    if isdebug
-        fprintf('Iter%d,lambda = %3.4e\n',j,lambda_tmp);
-    end
     lambda_a_2(2:end) = lambda_tmp;   
     % rr = logYifc_bprmvd - A_bprmvd*X - C*Z;
     if j==2
@@ -169,7 +166,7 @@ for j=2:nIter+1
                             'D0',D(:,vldpxl),'X0',X(:,vldpxl),...
                             'R0',RR_bprmvd(:,vldpxl),...
                             'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
-                            'PRECISION',precision,'gpu',gpu);
+                            'PRECISION',precision,'gpu',gpu,'debug',debug_huwacb);
     else
        [ X(:,vldpxl),Z(:,vldpxl),C,~,D(:,vldpxl),rho(:,vldpxl),Rhov ]...
            = huwacbl1_admm_gat_a(A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
@@ -177,7 +174,7 @@ for j=2:nIter+1
                             'D0',D(:,vldpxl),'X0',X(:,vldpxl),...
                             'R0',RR_bprmvd(:,vldpxl),'rho',rho(:,vldpxl),'Rhov',Rhov,...
                             'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
-                            'PRECISION',precision,'gpu',gpu);
+                            'PRECISION',precision,'gpu',gpu,'debug',debug_huwacb);
     end
     
     %logBg_bprmvd = C*Z;
@@ -196,14 +193,12 @@ for j=2:nIter+1
 
     %update logt_est!
     RR_bprmvd = RR_bprmvd + A_bprmvd(:,1)*X(1,:);
-    [logt_est_bprmvd,r_lad(vldpxl,:),d_lad([true vldpxl],:),rho_lad,Rhov_lad([true vldpxl],:),~,~,cost_val]...
-            = lad_admm_gat_b(X(1,vldpxl)', RR_bprmvd(:,vldpxl)','rho',rho_lad,'Rhov',Rhov_lad([true vldpxl],:),...
-            'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,'PRECISION',precision,'gpu',gpu);
-    % [logt_est_bprmvd,r_lad(vldpxl,:),d_lad(vldpxl,:),rho_lad,Rhov_lad(vldpxl,:)]...
-    %     = lad_gadmm_a_v2(X(1,vldpxl)', RR_bprmvd(:,vldpxl)',...
-    %     'X0',A_bprmvd(:,1)','R0',r_lad(vldpxl,:),'D0',d_lad(vldpxl,:),...
-    %     'rho',rho_lad,'Rhov',Rhov_lad(vldpxl,:),...
-    %     'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad);
+    [logt_est_bprmvd,~,~,...
+        rho_lad,Rhov_lad([true vldpxl],:),~,~,cost_val]...
+        = lad_admm_gat_b(X(1,vldpxl)', RR_bprmvd(:,vldpxl)',...
+        'rho',rho_lad,'Rhov',Rhov_lad([true vldpxl],:),...
+        'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
+        'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
     
     logt_est_bprmvd = logt_est_bprmvd';
     
@@ -228,7 +223,8 @@ end
                             'D0',D(:,vldpxl),'X0',X(:,vldpxl),'R0',RR_bprmvd(:,vldpxl),...
                             'rho',rho(:,vldpxl),'Rhov',Rhov,...
                             'verbose',verbose_huwacb,...
-                            'tol',tol_huwacb,'maxiter',maxiter_huwacb,'PRECISION',precision,'gpu',gpu);
+                            'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+                            'PRECISION',precision,'gpu',gpu,'debug',debug_huwacb);
 
 %%
 % original wavelength channels
