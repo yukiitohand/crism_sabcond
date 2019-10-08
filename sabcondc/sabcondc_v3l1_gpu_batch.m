@@ -15,12 +15,6 @@ function [logYif_cor,logt_est,logAB,logBg,logYif_isnan,X] = sabcondc_v3l1_gpu_ba
 
 % OUTPUTS
 
-% logYif = gpuArray(logYif);
-% WA     = gpuArray(WA);
-% Alib   = gpuArray(Alib);
-% logT   = gpuArray(logT);
-% BP     = gpuArray(BP);
-
 % [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,X,vldpxl]
 
 %%
@@ -102,9 +96,19 @@ logYif_isnan = or(logYif_isnan,badspc);
 % save the original bad entries for future use.
 logYif_isnan_ori = logYif_isnan;
 logYif(logYif_isnan) = 0;
+% tic; 
 for i=1:S
     logYif(:,:,i) = interp_nan_column(logYif(:,:,i),logYif_isnan(:,:,i),WA(:,i));
 end
+% toc;
+logYif = gpuArray(logYif);
+WA     = gpuArray(WA);
+Alib   = gpuArray(Alib);
+logT   = gpuArray(logT);
+BP     = gpuArray(BP);
+logYif_isnan = gpuArray(logYif_isnan);
+logYif_isnan_ori = gpuArray(logYif_isnan_ori);
+badspc = gpuArray(badspc);
 
 %%
 %-------------------------------------------------------------------------%
@@ -112,10 +116,10 @@ end
 %-------------------------------------------------------------------------%
 A = cat(2,logT,Alib);
 % compute concave basese beforehand
-C = concaveOperator(WA);
-Dinv = C \ eye(B);
-%C = concaveOperator_v2(WA);
-%Dinv = pagefun(@mldivide,C,eye(B,'gpuArray'));
+% C = concaveOperator(WA);
+% Dinv = C \ eye(B);
+C = concaveOperator_v2(WA);
+Dinv = pagefun(@mldivide,C,eye(B,'gpuArray'));
 s_d = vnorms(Dinv,1);
 C = Dinv./s_d;
 clear Dinv s_d;
@@ -125,16 +129,18 @@ if strcmpi(precision,'single')
 end
 
 % create lambdas
-lambda_c = zeros(B,L,S,precision);
-lambda_a2 = zeros(Nlib+Ntc,L,S,precision);
-lambda_a2(:,1+Ntc:end,:) = lambda_a;
-lambda_r = ones(B,L,S,precision);
-% lambda_c = zeros(B,L,S,precision,'gpuArray');
-% lambda_a2 = zeros(Nlib+Ntc,L,S,precision,'gpuArray');
-% lambda_r = ones(B,L,S,precision,'gpuArray');
+% lambda_c = zeros(B,L,S,precision);
+% lambda_a2 = zeros(Nlib+Ntc,L,S,precision);
+% lambda_r = ones(B,L,S,precision);
+lambda_c = zeros(B,L,S,precision,'gpuArray');
+lambda_a_2 = zeros(Nlib+Ntc,L,S,precision,'gpuArray');
+lambda_r = ones(B,L,S,precision,'gpuArray');
+
+lambda_a_2(:,1+Ntc:end,:) = lambda_a;
 
 % 
 lambda_c(logYif_isnan) = inf;
+lambda_c([1,Nc],:,:) = 0; % safeguard
 lambda_r(logYif_isnan) = 0;
 
 c2_z = zeros([Nc,1],precision);
@@ -142,17 +148,19 @@ c2_z = zeros([Nc,1],precision);
 c2_z(1) = -inf; c2_z(Nc) = -inf;
 
 % main computation
-tic; 
+% tic; 
 [ X,Z,~,D,rho,Rhov,~,~,cost_val]...
-    = huwacbl1_admm_gat_a_batch(A,logYif,C,'LAMBDA_A',lambda_a2,...
+    = huwacbl1_admm_gat_a_batch(A,logYif,C,'LAMBDA_A',lambda_a_2,...
             'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'C2_Z',c2_z,......
             'tol',1e-5,'maxiter',maxiter_huwacb,'verbose',verbose_huwacb,...
-            'precision',precision); toc;
-[ X,Z,C,R,D,rho,Rhov,~,~,cost_val]...
-= huwacbl1_admm_gat_a(A,logYif,gather(WA),'LAMBDA_A',lambda_a2,...
-'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
-'tol',1e-5,'maxiter',1000,'verbose','yes',...
-'precision',precision,'gpu',true,'Concavebase',C,'debug',true);
+            'precision',precision); % toc;
+% tic;
+% [ X1,Z1,~,R,D1,rho1,Rhov1,~,~,cost_val1]...
+% = huwacbl1_admm_gat_a(A,logYif,gather(WA),'LAMBDA_A',lambda_a2,...
+% 'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+% 'tol',1e-5,'maxiter',100,'verbose','no',...
+% 'precision',precision,'gpu',true,'Concavebase',C,'debug',false);
+% toc;
 
 % evaluate bad pixels
 RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
@@ -165,21 +173,22 @@ logYif_isnan = or(logYif_isnan,badspc);
 
 
 lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
+lambda_c([1,Nc],:,:) = 0; % safeguard
 lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
 
-resNrm = nansum(abs(RR).* lambda_r,'all');
+resNrm = nansum(abs(RR).* lambda_r,[1,2]);
 
 % Get initial transmission spectrum
 RR  = RR + pagefun(@mtimes,logT,X(1:Ntc,:,:));
 Xtc = sum(X(1:Ntc,:,:),1);
-[logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
+[logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val,Kcond]...
        = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
             'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
             'verbose',verbose_lad,'precision',precision);
 %
 logt_est = permute(logt_est,[2,1,3]);
 RR = RR - pagefun(@mtimes,logt_est,Xtc);
-resNewNrm = nansum(abs(lambda_r .* RR),'all');
+resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
 
 %%
 %-------------------------------------------------------------------------%
@@ -188,30 +197,38 @@ resNewNrm = nansum(abs(lambda_r .* RR),'all');
 A = cat(2,logt_est,Alib);
 X = cat(1,Xtc,X(1+Ntc:end,:,:));
 D = cat(1,zeros(1,L,S,precision,'gpuArray'),D(1+Ntc:end,:,:));
-lambda_a_2 = zeros(1+Nlib,1,S,precision,'gpuArray');
-rho = ones([1,L,S],precision,'gpuArray');
-lambda_tmp = lambda_a;
+lambda_a_2 = lambda_a.*ones(1+Nlib,L,S,precision,'gpuArray');
+lambda_a_2(1,:,:) = 0;
+% rho = ones([1,L,S],precision,'gpuArray');
+Rhov = cat(1,ones(1,1,S,precision,'gpuArray'),Rhov(Ntc+1:Ntc+Nlib+Nc+B,:,:));
+% lambda_tmp = lambda_a;
 % always update lambda_tmp
-lambda_tmp = lambda_tmp*resNewNrm/resNrm;
+% lambda_tmp = lambda_tmp .* resNewNrm ./ resNrm;
 
-for n=1:nIter
-    lambda_a_2(2:end) = lambda_tmp;
-    tic;
-    if n==1
-        [ X,Z,~,D,rho,Rhov,~,~,cost_val ]...
+for n=2:nIter
+    lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
+    % tic;
+    if n==2
+        [ X,Z,~,D,rho,Rhov,~,~,cost_val,Tcond ]...
             = huwacbl1_admm_gat_a_batch(A,logYif,C,...
                 'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
-                'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...
+                'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
                 'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
                 'PRECISION',precision);
+%         [ X1,Z1,~,R,D1,rho1,Rhov1,~,~,cost_val1]...
+%         = huwacbl1_admm_gat_a(A,logYif,gather(WA),'LAMBDA_A',lambda_a2,...
+%         'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+%         'Z0',Z,'D0',D,'X0',X,'R0',RR,...
+%         'tol',1e-5,'maxiter',100,'verbose','no',...
+%         'precision',precision,'gpu',true,'Concavebase',C,'debug',false);
     else
        [ X,Z,~,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,logYif,C,...
           'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
           'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
           'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
-          'PRECISION',precision);
+          'PRECISION',precision,'Tcond',Tcond);
     end
-    toc;
+    % toc;
     % evaluate bad pixels
     RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
     logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.015 );
@@ -219,24 +236,24 @@ for n=1:nIter
     logYif_isnan = or(logYif_isnan,badspc);
 
     lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
+    lambda_c([1,Nc],:,:) = 0; % safeguard
     lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
     
-    resNrm = nansum(abs(lambda_r .* RR),'all');
+    resNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
     % update logt_est
     RR  = RR + pagefun(@mtimes,A(:,1,:),X(1,:,:));
-    tic; [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
-       = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-            'rho',rho_lad,'Rhov',Rhov_lad,...
+    [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
+       = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...% 'rho',rho_lad,'Rhov',Rhov_lad,...
             'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
-            'verbose',verbose_lad,'precision',precision); toc;
+            'verbose',verbose_lad,'precision',precision,'Kcond',Kcond);
     logt_est = permute(logt_est,[2,1,3]);
     RR = RR - pagefun(@mtimes,logt_est,X(1,:,:));
-    resNewNrm = nansum(abs(lambda_r .* RR),'all');
+    resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
     A(:,1,:) = logt_est;
     
-    lambda_tmp = lambda_tmp*resNewNrm/resNrm;
+    % lambda_tmp = lambda_tmp*resNewNrm/resNrm;
     
 end
 
@@ -246,7 +263,7 @@ end
 %-------------------------------------------------------------------------%
 [ X,Z,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,logYif,C,...
       'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
-      'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+      'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
       'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
       'PRECISION',precision);
 
@@ -255,6 +272,7 @@ logAB        = pagefun(@mtimes,Alib,X(2:end,:,:));
 logBg        = pagefun(@mtimes,C,Z);
 logt_est     = A(:,1,:);
 logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:));
+logYif_cor(logYif_isnan) = nan;
 
 [logYif_cor,logt_est,logAB,logBg,logYif_isnan,X] = gather(logYif_cor,logt_est,logAB,logBg,logYif_isnan,X);
 
