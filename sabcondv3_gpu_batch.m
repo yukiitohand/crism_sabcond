@@ -32,6 +32,10 @@ lls = [];
 
 precision = 'double';% {'single','double'}
 
+batch_size = 10;
+
+verbose = 0;
+
 global crism_env_vars
 dir_yuk = crism_env_vars.dir_YUK;
 
@@ -92,6 +96,10 @@ else
                 lls = varargin{i+1};
             case 'PRECISION'
                 precision = varargin{i+1};
+            case 'BATCH_SIZE'
+                batch_size = varargin{i+1};
+            case 'VERBOSE'
+                verbose = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
@@ -449,15 +457,12 @@ fprintf('Current time is %s.\n',tstart);
 % Yif_cor_ori = nan([nBall,nLall,nCall]);
 % Valid_pixels = false([nCall,nLall]);
 
-Yif_cor = nan([nB,nL,nCall],precision);
-% Yif_isnan = nan([nBall,nLall,nCall]);
-T_est = nan([nB,nCall],precision);
-Bg_est = nan([nB,nL,nCall],precision); AB_est = nan([nB,nL,nCall],precision);
-ancillaries = struct('X',cell(1,nCall),'lambda',cell(1,nCall),'nIter',cell(1,nCall),...
-    'huwacb_func',cell(1,nCall),'maxiter_huwacb',cell(1,nCall),'tol_huwacb',cell(1,nCall),'gp_bool',cell(1,nCall));
-% RR_ori = nan([nBall,nLall,nCall]);
-Yif_cor_ori = nan([nB,nL,nCall],precision);
-Valid_pixels = false([nCall,nL]);
+Yif_cor = nan([nBall,nLall,nCall],precision);
+Yif_isnan = nan([nBall,nLall,nCall]);
+T_est = nan([nBall,1,nCall],precision);
+Bg_est = nan([nBall,nLall,nCall],precision); AB_est = nan([nBall,nLall,nCall],precision);
+Yif_cor_ori = nan([nBall,nLall,nCall],precision);
+X = [];
 
 % evaluate valid columns
 valid_columns = ~all(isnan(WA),1);
@@ -483,7 +488,7 @@ for c = Columns_valid
     end
 end
 
-batch_size = 1;
+
 n_batch = ceil(length(Columns_valid)/batch_size);
 
 BP = isnan(GP);
@@ -493,16 +498,37 @@ if strcmpi(precision,'single')
     WA = single(WA);
 end
 
+switch verbose
+    case 0
+        verbose_lad = 'no';
+        verbose_huwacb = 'no';
+        debug_huwacb = false;
+        debug_lad = false;
+    case 1
+        verbose_lad = 'yes';
+        verbose_huwacb = 'yes';
+        debug_huwacb = false;
+        debug_lad = false;
+    case 2
+        verbose_lad = 'yes';
+        verbose_huwacb = 'yes';
+        debug_huwacb = true;
+        debug_lad = true;
+    otherwise
+        error('VIS=%d is not defined',verbose);
+end
+
+
 for ni = 1:n_batch
     if ni~=n_batch
         cList = Columns_valid((1+batch_size*(ni-1)):(batch_size*ni));
     elseif ni==n_batch
-        cList = Columns_valid((1+batch_size*(ni-1)):n_batch);
+        cList = Columns_valid((1+batch_size*(ni-1)):length(Columns_valid));
     end
     for i = 1:length(cList)
         c = cList(i);
         [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
-        Alib = Alib;
+        NA = size(Alib,2);
         if i==1
             Alibs = Alib;
         else
@@ -512,11 +538,19 @@ for ni = 1:n_batch
     if strcmpi(precision,'single')
         Alibs = single(Alibs);
     end
-    
-    [Yif_cor(:,:,cList),T_est(:,cList),AB_est(:,:,cList),...
-        Bg_est(:,:,cList),~,X]...
+    tic;
+    [Yif_cor(bBool,lBool,cList),T_est(bBool,1,cList),AB_est(bBool,lBool,cList),...
+        Bg_est(bBool,lBool,cList),Yif_isnan(bBool,lBool,cList),Xc]...
     = sabcondc_v3l1_gpu_batch(logYif(:,:,cList),WA(:,cList),Alibs,logT_extrap(:,:,cList),...
-                      BP(:,:,cList),'lambda_a',lambda_a);
+                      BP(:,:,cList),'lambda_a',lambda_a,'precision',precision,...
+                      'verbose_lad',verbose_lad,...%'debug_lad',debug_lad,...
+              'verbose_huwacb',verbose_huwacb);%,'debug_huwacb',debug_huwacb);
+    Yif_cor_ori(bBool,lBool,cList) = logYif(:,:,cList) - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,cList)),gpuArray(Xc(1,:,:))));
+    if ni==1
+        X = nan(NA+1,nLall,nCall);
+    end
+    X(:,lBool,cList) = Xc;
+    toc;
 end
 
 
@@ -526,9 +560,13 @@ Yif_cor_ori = exp(Yif_cor_ori);
 
 Yif_cor = permute(Yif_cor,[2,3,1]);
 Yif_cor_ori = permute(Yif_cor_ori,[2,3,1]);
-Bg_est = permute(Bg_est,[2,3.1]);
+Yif_isnan = permute(Yif_isnan,[2,3,1]);
+Bg_est = permute(Bg_est,[2,3,1]);
 AB_est = permute(AB_est,[2,3,1]);
-Valid_pixels = Valid_pixels';
+T_est  = squeeze(T_est);
+X = permute(X,[2,3,1]);
+
+% Valid_pixels = Valid_pixels';
 
 
 tend = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
@@ -580,7 +618,7 @@ fname_supple = joinPath(save_dir,[basename_cr '.mat']);
 wa = WAdata.img;
 wa = squeeze(wa)';
 fprintf('Saving %s ...\n',fname_supple);
-save(fname_supple,'wa','bands','lls','T_est','ancillaries','Valid_pixels');
+save(fname_supple,'wa','bands','lls','T_est','X','Yif_isnan');
 fprintf('Done\n');
 
 basename_Bg = [basename_cr '_Bg'];
@@ -600,14 +638,6 @@ fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
 envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
 fprintf('Done\n');
 
-% residual
-basename_RR = [basename_cr '_RR'];
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_RR '.hdr']));
-envihdrwritex(hdr_cr,joinPath(save_dir, [basename_RR '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_RR '.img']));
-envidatawrite(single(RR_ori),joinPath(save_dir, [basename_RR '.img']),hdr_cr);
-fprintf('Done\n');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % performing interpolation
@@ -617,11 +647,9 @@ img_modell1 = AB_est .* Bg_est;
 nan_cells = isnan(Yif_cor);
 img_sabcondl1_nan_replaced(nan_cells) = img_modell1(nan_cells);
 
-Valid_pixels_good = double(Valid_pixels);
-Valid_pixels_good(Valid_pixels==0) = nan;
-for bi=1:nBall
-    img_sabcondl1_nan_replaced(:,:,bi) = img_sabcondl1_nan_replaced(:,:,bi) .* Valid_pixels_good;
-end
+Valid_pixels_good = double(mean(Yif_isnan(:,:,bands),3)<0.4);
+Valid_pixels_good(Valid_pixels_good==0) = nan;
+img_sabcondl1_nan_replaced = img_sabcondl1_nan_replaced .* Valid_pixels_good;
 
 % replace NaN with interpolation from a model
 basename_cr_nr = [basename_cr '_nr'];
@@ -639,30 +667,30 @@ fprintf('Done\n');
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % % gaussian filter
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-logimg_sabcondl1_nan_replaced_ab = log(img_sabcondl1_nan_replaced) - log(Bg_est);
-logimg_gfl = nan(size(logimg_sabcondl1_nan_replaced_ab));
-gausswidth = 0.6; fltsize = 5;
-h = fspecial('gaussian',fltsize,gausswidth);
-for i=1:size(img_sabcondl1_nan_replaced,3)
-    logimg_gfl(:,:,i) = nanimfilter(logimg_sabcondl1_nan_replaced_ab(:,:,i),h);
-end
-img_sabcondl1_nr_gf = exp(logimg_gfl) .* Bg_est;
-
-basename_cr_nr_gf = [basename_cr_nr '_gf'];
-hdr_cr_nr_gf = hdr_cr_nr;
-dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
-hdr_cr_nr_gf.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced and gauss filtered after processing modified.}',dt);
-hdr_cr_nr_gf.cat_history = [hdr_cr_nr_gf.cat_history '_gf'];
-hdr_cr_nr_gf.gauss_filter_std = gausswidth;
-hdr_cr_nr_gf.gauss_filter_size = fltsize;
-hdr_cr_nr.cat_input_files = basename_cr_nr;
-
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr_gf '.hdr']));
-envihdrwritex(hdr_cr_nr_gf,joinPath(save_dir,[basename_cr_nr_gf '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr_gf '.img']));
-envidatawrite(single(img_sabcondl1_nr_gf),joinPath(save_dir,[basename_cr_nr_gf '.img']),hdr_cr_nr_gf);
-fprintf('Done\n');
+% logimg_sabcondl1_nan_replaced_ab = log(img_sabcondl1_nan_replaced) - log(Bg_est);
+% logimg_gfl = nan(size(logimg_sabcondl1_nan_replaced_ab));
+% gausswidth = 0.6; fltsize = 5;
+% h = fspecial('gaussian',fltsize,gausswidth);
+% for i=1:size(img_sabcondl1_nan_replaced,3)
+%     logimg_gfl(:,:,i) = nanimfilter(logimg_sabcondl1_nan_replaced_ab(:,:,i),h);
+% end
+% img_sabcondl1_nr_gf = exp(logimg_gfl) .* Bg_est;
+% 
+% basename_cr_nr_gf = [basename_cr_nr '_gf'];
+% hdr_cr_nr_gf = hdr_cr_nr;
+% dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+% hdr_cr_nr_gf.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced and gauss filtered after processing modified.}',dt);
+% hdr_cr_nr_gf.cat_history = [hdr_cr_nr_gf.cat_history '_gf'];
+% hdr_cr_nr_gf.gauss_filter_std = gausswidth;
+% hdr_cr_nr_gf.gauss_filter_size = fltsize;
+% hdr_cr_nr.cat_input_files = basename_cr_nr;
+% 
+% fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr_gf '.hdr']));
+% envihdrwritex(hdr_cr_nr_gf,joinPath(save_dir,[basename_cr_nr_gf '.hdr']),'OPT_CMOUT',false);
+% fprintf('Done\n');
+% fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr_gf '.img']));
+% envidatawrite(single(img_sabcondl1_nr_gf),joinPath(save_dir,[basename_cr_nr_gf '.img']),hdr_cr_nr_gf);
+% fprintf('Done\n');
 
 % logimg_sabcondl1_nan_replaced_ab = log(img_sabcondl1_nan_replaced) - log(Bg_est);
 % logimg_gfl = nan([nLall,nCall,nBall]);
