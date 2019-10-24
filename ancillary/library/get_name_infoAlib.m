@@ -5,7 +5,7 @@ function [names] = get_name_infoAlib(infoA)
             case 'CRISM spectral library'
                 names{i} = infoA(i).spc_name;
             case 'RELAB spectral library'
-                names{i} = infoA(i).sampleName;
+                names{i} = [infoA(i).subType ' ' infoA(i).sampleName];
             case 'USGS splib06a'
                 names{i} = infoA(i).name;
             case 'CRISM Type Spectral Library'
