@@ -33,6 +33,12 @@ skip_ifexist = false;
 
 ffc_counter = 1;
 
+obs_id_T = '';
+varargin_T = {};
+
+cList = [];
+is_column_test = false;
+
 global crism_env_vars
 dir_yuk = crism_env_vars.dir_YUK;
 
@@ -91,6 +97,14 @@ else
                 mt = varargin{i+1};
             case 'ADDITIONAL_SUFFIX'
                 additional_suffix = varargin{i+1};
+            case 'OBS_ID_T'
+                obs_id_T = varargin{i+1};
+            case 'VARARGIN_T'
+                varargin_T = varargin{i+1};
+            case 'COLUMNS'
+                cList = varargin{i+1};
+            case 'IS_COLUMN_TEST'
+                is_column_test = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
@@ -198,6 +212,18 @@ switch lower(opt_img)
         propYRA.version = trr_vr;
         bnameYRA = get_basenameOBS_fromProp(propYRA);
         TRRYRAdata = CRISMdata(bnameYRA,d_yuk_trr);
+    case 'trrd'
+        trr_vr = 'D';
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = trr_vr;
+        basenameTRRD = get_basenameOBS_fromProp(prop);
+        TRRDIFdata = CRISMdata(basenameTRRD,d_yuk_trr);
+        Yif = TRRDIFdata.readimgi();
+        
+        propYRA = getProp_basenameOBSERVATION(TRRRAdata.basename);
+        propYRA.version = trr_vr;
+        bnameYRA = get_basenameOBS_fromProp(propYRA);
+        TRRYRAdata = CRISMdata(bnameYRA,d_yuk_trr);
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
@@ -269,6 +295,11 @@ switch opt_img
         prop.version = 'C';
         basenameTRRC = get_basenameOBS_fromProp(prop);
         basename_cr = [basenameTRRC suffix];
+    case 'TRRD'
+        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        prop.version = 'D';
+        basenameTRRD = get_basenameOBS_fromProp(prop);
+        basename_cr = [basenameTRRD suffix];
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
@@ -495,7 +526,10 @@ switch t_mode
                                    'WAVELENGTH_FILTER',propWA.wavelength_filter);
     case {4}
         sclk_img = (TRRIFdata.get_sclk_start()+TRRIFdata.get_sclk_stop())/2;
-        [ at_trans ] = load_T_sclk_closest(sclk_img);
+        [ at_trans ] = load_T_sclk_closest(sclk_img,varargin_T{:});
+        at_trans = bin_image_frames(at_trans,'binning',propWA.binning);
+    case {5}
+        [ at_trans ] = load_T_given( obs_id_T,varargin_T{:});
         at_trans = bin_image_frames(at_trans,'binning',propWA.binning);
     otherwise
         error('Undefined t_mode %d',t_mode);
@@ -522,7 +556,11 @@ RR_ori = nan([nLall,nCall,nBall]);
 Yif_cor_ori = nan([nLall,nCall,nBall]);
 Valid_pixels = false([nLall,nCall]);
 Std_est = nan([nLall,nCall,nBall]);
-for c=1:nCall
+
+if isempty(cList)
+    cList = 1:nCall;
+end
+for c=cList
     % ADR data is filtered, so the spectra at edges are removed.
     if ~all(isnan(WA(:,c))) && any(~isnan(logYif(:,:,c)),'all')
         if any(isnan(logT(:,:,c)))
@@ -548,7 +586,7 @@ for c=1:nCall
                 error('logt suppression is not defined for bands_opt %d',bands_opt);
         end
         
-        tic;
+        tic
         [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
 
         [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,ancillary,rr_ori_c,vldpxl_c,res_exp,std_expected_scaled]...
@@ -585,84 +623,91 @@ fprintf('Processing time is %s\n',tend-tstart);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % save results
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-fprintf('Now saving...\n');
-% hdr, mimics CAT file production
-hdr_cr = crism_const_cathdr(TRRIFdata,true);
-hdr_cr.cat_history = suffix;
-switch opt_img
-    case 'if'
-        hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
-    case 'ra_if'
-        hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
-    case 'yuki_IoF'
-        hdr_cr.cat_input_files = [basenameYUK2 '.mat'];
-    case 'TRRY'
-        hdr_cr.cat_input_files = [basenameTRRY '.mat'];
-    case 'TRRC'
-        hdr_cr.cat_input_files = [basenameTRRC '.mat'];
-    case 'TRRB'
-        hdr_cr.cat_input_files = [basenameTRRB '.mat'];
-    otherwise
-        error('opt_img = %s is not defined',opt_img);
+if ~is_column_test
+    fprintf('Now saving...\n');
+    % hdr, mimics CAT file production
+    hdr_cr = crism_const_cathdr(TRRIFdata,true);
+    hdr_cr.cat_history = suffix;
+    switch opt_img
+        case 'if'
+            hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
+        case 'ra_if'
+            hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
+        case 'yuki_IoF'
+            hdr_cr.cat_input_files = [basenameYUK2 '.mat'];
+        case 'TRRY'
+            hdr_cr.cat_input_files = [basenameTRRY '.mat'];
+        case 'TRRC'
+            hdr_cr.cat_input_files = [basenameTRRC '.mat'];
+        case 'TRRB'
+            hdr_cr.cat_input_files = [basenameTRRB '.mat'];
+        case 'TRRD'
+            hdr_cr.cat_input_files = [basenameTRRD '.mat'];
+        otherwise
+            error('opt_img = %s is not defined',opt_img);
+    end
 end
 
 %% saving
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.hdr']));
-envihdrwritex(hdr_cr,joinPath(save_dir,[basename_cr '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.img']));
-envidatawrite(single(Yif_cor),joinPath(save_dir,[basename_cr '.img']),hdr_cr);
-fprintf('Done\n');
+if ~is_column_test
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.hdr']));
+    envihdrwritex(hdr_cr,joinPath(save_dir,[basename_cr '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.img']));
+    envidatawrite(single(Yif_cor),joinPath(save_dir,[basename_cr '.img']),hdr_cr);
+    fprintf('Done\n');
 
-basename_ori = [basename_cr '_ori'];
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.hdr']));
-envihdrwritex(hdr_cr,joinPath(save_dir,[basename_ori '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
-envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
-fprintf('Done\n');
+    basename_ori = [basename_cr '_ori'];
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.hdr']));
+    envihdrwritex(hdr_cr,joinPath(save_dir,[basename_ori '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
+    envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
+    fprintf('Done\n');
 
-fname_supple = joinPath(save_dir,[basename_cr '.mat']);
-wa = WAdata.img;
-wa = squeeze(wa)';
-fprintf('Saving %s ...\n',fname_supple);
-save(fname_supple,'wa','bands','lls','T_est','ancillaries','Valid_pixels');
-fprintf('Done\n');
+    fname_supple = joinPath(save_dir,[basename_cr '.mat']);
+    wa = WAdata.img;
+    wa = squeeze(wa)';
+    fprintf('Saving %s ...\n',fname_supple);
+    save(fname_supple,'wa','bands','lls','T_est','ancillaries','Valid_pixels');
+    fprintf('Done\n');
 
-basename_Bg = [basename_cr '_Bg'];
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
-envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.img']));
-envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
-fprintf('Done\n');
+    basename_Bg = [basename_cr '_Bg'];
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
+    envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.img']));
+    envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
+    fprintf('Done\n');
 
 
-basename_AB = [basename_cr '_AB'];
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
-envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
-envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
-fprintf('Done\n');
+    basename_AB = [basename_cr '_AB'];
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
+    envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
+    envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
+    fprintf('Done\n');
 
-% residual
-basename_RR = [basename_cr '_RR'];
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_RR '.hdr']));
-envihdrwritex(hdr_cr,joinPath(save_dir, [basename_RR '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_RR '.img']));
-envidatawrite(single(RR_ori),joinPath(save_dir, [basename_RR '.img']),hdr_cr);
-fprintf('Done\n');
+    % residual
+    basename_RR = [basename_cr '_RR'];
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_RR '.hdr']));
+    envihdrwritex(hdr_cr,joinPath(save_dir, [basename_RR '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_RR '.img']));
+    envidatawrite(single(RR_ori),joinPath(save_dir, [basename_RR '.img']),hdr_cr);
+    fprintf('Done\n');
 
-% errorbar
-basename_STD = [basename_cr '_STD'];
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_STD '.hdr']));
-envihdrwritex(hdr_cr,joinPath(save_dir, [basename_STD '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_STD '.img']));
-envidatawrite(single(Std_est),joinPath(save_dir, [basename_STD '.img']),hdr_cr);
-fprintf('Done\n');
+    % errorbar
+    basename_STD = [basename_cr '_STD'];
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_STD '.hdr']));
+    envihdrwritex(hdr_cr,joinPath(save_dir, [basename_STD '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_STD '.img']));
+    envidatawrite(single(Std_est),joinPath(save_dir, [basename_STD '.img']),hdr_cr);
+    fprintf('Done\n');
+    
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % performing interpolation
@@ -672,24 +717,28 @@ img_modell1 = AB_est .* Bg_est;
 % nan_cells = isnan(Yif_cor);
 img_sabcondl1_nan_replaced(Yif_isnan) = img_modell1(Yif_isnan);
 
+Yif_cor_nr = img_sabcondl1_nan_replaced;
+
 Valid_pixels_good = double(Valid_pixels);
 Valid_pixels_good(Valid_pixels==0) = nan;
 for bi=1:nBall
     img_sabcondl1_nan_replaced(:,:,bi) = img_sabcondl1_nan_replaced(:,:,bi) .* Valid_pixels_good;
 end
 
-% replace NaN with interpolation from a model
-basename_cr_nr = [basename_cr '_nr'];
-hdr_cr_nr = hdr_cr;
-dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
-hdr_cr_nr.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
-hdr_cr_nr.cat_history = [hdr_cr_nr.cat_history '_nr'];
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.hdr']));
-envihdrwritex(hdr_cr_nr,joinPath(save_dir,[basename_cr_nr '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
-envidatawrite(single(img_sabcondl1_nan_replaced),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
-fprintf('Done\n');
+if ~is_column_test
+    % replace NaN with interpolation from a model
+    basename_cr_nr = [basename_cr '_nr'];
+    hdr_cr_nr = hdr_cr;
+    dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+    hdr_cr_nr.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
+    hdr_cr_nr.cat_history = [hdr_cr_nr.cat_history '_nr'];
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.hdr']));
+    envihdrwritex(hdr_cr_nr,joinPath(save_dir,[basename_cr_nr '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
+    envidatawrite(single(img_sabcondl1_nan_replaced),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
+    fprintf('Done\n');
+end
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % % gaussian filter
@@ -703,21 +752,23 @@ for i=1:size(img_sabcondl1_nan_replaced,3)
 end
 img_sabcondl1_nr_gf = exp(logimg_gfl) .* Bg_est;
 
-basename_cr_nr_gf = [basename_cr_nr '_gf'];
-hdr_cr_nr_gf = hdr_cr_nr;
-dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
-hdr_cr_nr_gf.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced and gauss filtered after processing modified.}',dt);
-hdr_cr_nr_gf.cat_history = [hdr_cr_nr_gf.cat_history '_gf'];
-hdr_cr_nr_gf.gauss_filter_std = gausswidth;
-hdr_cr_nr_gf.gauss_filter_size = fltsize;
-hdr_cr_nr.cat_input_files = basename_cr_nr;
+if ~is_column_test
+    basename_cr_nr_gf = [basename_cr_nr '_gf'];
+    hdr_cr_nr_gf = hdr_cr_nr;
+    dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+    hdr_cr_nr_gf.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced and gauss filtered after processing modified.}',dt);
+    hdr_cr_nr_gf.cat_history = [hdr_cr_nr_gf.cat_history '_gf'];
+    hdr_cr_nr_gf.gauss_filter_std = gausswidth;
+    hdr_cr_nr_gf.gauss_filter_size = fltsize;
+    hdr_cr_nr.cat_input_files = basename_cr_nr;
 
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr_gf '.hdr']));
-envihdrwritex(hdr_cr_nr_gf,joinPath(save_dir,[basename_cr_nr_gf '.hdr']),'OPT_CMOUT',false);
-fprintf('Done\n');
-fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr_gf '.img']));
-envidatawrite(single(img_sabcondl1_nr_gf),joinPath(save_dir,[basename_cr_nr_gf '.img']),hdr_cr_nr_gf);
-fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr_gf '.hdr']));
+    envihdrwritex(hdr_cr_nr_gf,joinPath(save_dir,[basename_cr_nr_gf '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr_gf '.img']));
+    envidatawrite(single(img_sabcondl1_nr_gf),joinPath(save_dir,[basename_cr_nr_gf '.img']),hdr_cr_nr_gf);
+    fprintf('Done\n');
+end
 
 % logimg_sabcondl1_nan_replaced_ab = log(img_sabcondl1_nan_replaced) - log(Bg_est);
 % logimg_gfl = nan([nLall,nCall,nBall]);
