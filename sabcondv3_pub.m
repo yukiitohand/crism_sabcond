@@ -343,7 +343,7 @@ for c = 1:nCall
             Alib = single(Alib); Aicelib = single(Aicelib);
         end
           
-        [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
+        [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
             = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...
               'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
               'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
@@ -365,7 +365,7 @@ end
 
 Yif_cor = exp(Yif_cor); T_est = exp(T_est);
 Bg_est = exp(Bg_est); AB_est = exp(AB_est);
-Yif_cor_ori = exp(Yif_cor_ori);
+Yif_cor_ori = exp(Yif_cor_ori); logIce = exp(logIce);
 
 tend = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
 fprintf('finish procceing, current time is %s.\n',tend);
@@ -429,6 +429,16 @@ fprintf('Done\n');
 fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
 envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
 fprintf('Done\n');
+
+if ~isempty(opticelib)
+    basename_Ice = [basename_cr '_Ice'];
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.hdr']));
+    envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
+    fprintf('Done\n');
+    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
+    envidatawrite(single(logIce),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
+    fprintf('Done\n');
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % performing interpolation

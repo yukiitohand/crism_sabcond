@@ -1,4 +1,4 @@
-function [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,...
+function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,...
     ancillary,rr_ori,vldpxl]...
     = sabcondc_v3l1_pub( Alib,logYifc,wvc,logtc,varargin )
 % [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,...
@@ -19,6 +19,7 @@ verbose_lad = 'no';
 debug_lad = false;
 nIter = 5;
 lambda_a = 0.01;
+lambda_a_ice = 0;
 verbose_huwacb = 'no';
 debug_huwacb = false;
 gp = [];
@@ -39,6 +40,8 @@ else
                 nIter = varargin{i+1};
             case 'LAMBDA_A'
                 lambda_a = varargin{i+1};
+            case 'LAMBDA_A_ICE'
+                lambda_a_ice = varargin{i+1};
             case 'MAXITER_HUWACB'
                 maxiter_huwacb = round(varargin{i+1});
                 if (maxiter_huwacb <= 0 )
@@ -113,8 +116,10 @@ vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.8;
 %% initialization of logt_est
 lambda_a_1 = zeros(1,N_A1,precision);
 lambda_tmp = lambda_a;
+lambda_tmp_ice = lambda_a_ice;
 % lambda_a_1(idxAlibstrt:end) = lambda_tmp;
 lambda_a_1(idxAlib) = lambda_tmp;
+lambda_a_1(idxAice) = lambda_tmp_ice;
 
 X1 = nan(N_A1,Ny,precision); Z1 = nan(B_bprmvd,Ny,precision); 
 D1 = nan(N_A1+B_bprmvd*2,Ny,precision);
@@ -154,24 +159,32 @@ resNewNrm_bprmvd = nansum(abs(RR_bprmvd),'all');
 %-------------------------------------------------------------------------%
 % main loop
 %-------------------------------------------------------------------------%
-A_bprmvd = [logt_est_bprmvd Alib_bprmvd];
-X = [Xlogtc_1d;X1(idxAlib,:)];
+A_bprmvd = [logt_est_bprmvd Aice_bprmvd Alib_bprmvd];
+N_A = size(A_bprmvd,2);
+X = [Xlogtc_1d;X1(or(idxAice,idxAlib),:)];
 % D = [sum(D1(idxAlogtc,:),1);D1(idxAlib,:)];
-D = [zeros(1,size(D1,2),precision); D1(idxAlibstrt:end,:)];
+D = [zeros(1,size(D1,2),precision); D1(idxAicestrt:end,:)];
 C = C1;
 Z = Z1;
-lambda_a_2 = zeros(1,1+Nlib);
+
 
 rho = ones([1,Ny]);
 
 clear X1 Z1 C1 D1;
 
+idxAice = false(1,N_A); idxAice(2:(Nice+1)) = true;
+idxAlib = false(1,N_A); idxAlib((Nice+2):end) = true;
+
 % always update lambda_tmp
+lambda_a_2 = zeros(1,N_A);
 lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
+lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
 
 for j=2:nIter+1
-    lambda_a_2(2:end) = lambda_tmp;   
+    % lambda_a_2(2:end) = lambda_tmp;   
     % rr = logYifc_bprmvd - A_bprmvd*X - C*Z;
+    lambda_a_2(idxAlib) = lambda_tmp;
+    lambda_a_2(idxAice) = lambda_tmp_ice;
     if j==2
         [ X(:,vldpxl),Z(:,vldpxl),C,~,D(:,vldpxl),rho(:,vldpxl),Rhov ]...
             = huwacbl1_admm_gat_a(A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
@@ -222,6 +235,7 @@ for j=2:nIter+1
     A_bprmvd(:,1) = logt_est_bprmvd;
     
     lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
+    lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
 
 end
 
@@ -242,7 +256,7 @@ end
 %%
 % original wavelength channels
 logBg = nan(B,Ny,precision); logBg(gp_bool,:) = C*Z;
-logAB = Alib*X(2:end,:);
+logAB = Alib*X(idxAlib,:); logIce = Aicelib*X(idxAice,:);
 
 logt_est = nan(B,1,precision); logt_est(gp_bool) = A_bprmvd(:,1);
 
