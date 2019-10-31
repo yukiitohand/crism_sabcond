@@ -24,12 +24,15 @@ debug_huwacb = false;
 gp = [];
 precision = 'double';
 gpu = false;
+Aicelib = [];
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
 else
     for i=1:2:(length(varargin)-1)
         switch upper(varargin{i})
+            case 'AICELIB'
+                Aicelib = [];
             case 'GP'
                 gp = varargin{i+1};
             case 'NITER'
@@ -64,15 +67,17 @@ else
                 gpu = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
-                error(['Unrecognized option: ''' varargin{i} '''']);
+                error('Unrecognized option: %s', varargin{i});
         end
     end
 end
 
-[B,Ny] = size(logYifc);
+Aice_notisempty = isempty(Aicelib);
+
+[B,Ny]   = size(logYifc);
 [~,Nlib] = size(Alib);
 [~,Ntc]  = size(logtc);
-
+[~,Nice] = size(Aicelib);
 
 gp_bool = (gp==1);
 B_bprmvd = sum(gp_bool);
@@ -81,12 +86,20 @@ logYifc_bprmvd_ori = logYifc_bprmvd; % save for later
 wvc_bprmvd = wvc(gp_bool,:);
 Alib_bprmvd = Alib(gp_bool,:);
 logtc_bprmvd = logtc(gp_bool,:);
-A_bprmvd = [logtc_bprmvd Alib_bprmvd];
-N_A1 = Ntc + Nlib;
+if Aice_notisempty
+    Aice_bprmvd = Aicelib(gp_bool,:);
+else
+    Aice_bprmvd = [];
+end
+A_bprmvd = [logtc_bprmvd Aice_bprmvd Alib_bprmvd];
+N_A1 = Ntc + Nice + Nlib;
 
-idxAlibstrt = Ntc+1;
+idxAicestrt = Ntc+1;
+idxAlibstrt = Ntc+Nice+1;
 idxAlogtc = false(1,N_A1);
-idxAlogtc(1:idxAlibstrt-1) = true;
+idxAlogtc(1:idxAicestrt-1) = true;
+idxAice = false(1,N_A1);
+idxAice(idxAicestrt:idxAlibstrt-1) = true;
 idxAlib = false(1,N_A1);
 idxAlib(idxAlibstrt:end) = true;
 

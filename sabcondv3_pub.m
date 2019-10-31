@@ -10,6 +10,7 @@ optCRISMspclib = 1;
 optRELAB = 1;
 optUSGSsplib = 1;
 optCRISMTypeLib = 2;
+opticelib = '';
 cntRmvl = 1;
 optInterpid = 1;
 t_mode = 2;
@@ -57,6 +58,8 @@ else
                 optUSGSsplib = varargin{i+1};
             case 'OPT_CRISMTYPELIB'
                 optCRISMTypeLib = varargin{i+1};
+            case 'OPT_ICELIB'
+                opticelib = varargin{i+1};
             case 'OPT_IMG'
                 opt_img = varargin{i+1};
             case 'CNTRMVL'
@@ -109,10 +112,11 @@ fprintf('t_mode:%d\n',t_mode);
 fprintf('gauss_sigma:%f\n',gausssigma);
 fprintf('opt_img: %s\n',opt_img);
 fprintf('optBP: %s\n',optBP);
+fprintf('opt_icelib: %d\n',opticelib);
 
 bands = genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
-libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,'','');
+libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
 
 % open log file
 username = char(java.lang.System.getProperty('user.name'));
@@ -330,15 +334,21 @@ for c = 1:nCall
         end
         tic;
         [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        if ~isempty(opticelib)
+            [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
+        else
+            Aicelib = [];
+        end
         if strcmpi(precision,'single')
-            Alib = single(Alib);
+            Alib = single(Alib); Aicelib = single(Aicelib);
         end
           
         [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
             = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...
               'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
               'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
-              'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb);
+              'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+              'Aicelib',Aicelib);
 
         Yif_cor(lBool,c,bBool) = reshape(logYifc_cor',[nL,1,nB]);
         Yif_cor_ori(lBool,c,bBool) = reshape(logYifc_cor_ori',[nL,1,nB]);
