@@ -1,4 +1,10 @@
 function [Yif_cor,Bg_est,AB_est,T_est] = sabcondv3_pub(obs_id,varargin)
+% [Yif_cor,Bg_est,AB_est,T_est] = sabcondv3_pub(obs_id,varargin)
+%   This function performs simultaneous de-noising and atmospheric
+%   correction of CRISM data. Currently 
+
+% INPUT parameters
+
 % huwacb option
 nIter = 5;
 lambda_a = 0.01;
@@ -255,6 +261,7 @@ switch lower(optBP)
     otherwise 
         error('optBP=%s is not defined.',optBP);
 end
+BP = isnan(GP);
 
 %% read ADR transmission data
 switch t_mode
@@ -281,18 +288,29 @@ if strcmpi(precision,'single')
     WA     = single(WA);
 end
 
-fprintf('Start processing\n');
-tstart = datetime('now','TimeZone','America/New_York','Format','d-MMM-y HH:mm:ss Z');
-fprintf('Current time is %s.\n',tstart);
+% evaluate valid columns
+valid_columns = ~all(isnan(WA),1);
+Columns = 1:nCall;
+Columns_valid = Columns(valid_columns);
 
-Yif_cor = nan([nLall,nCall,nBall],precision);
-T_est = nan([nBall,nCall],precision);
-Bg_est = nan([nLall,nCall,nBall],precision); AB_est = nan([nLall,nCall,nBall],precision);
-ancillaries = struct('X',cell(1,nCall),'lambda',cell(1,nCall),'nIter',cell(1,nCall),...
-    'huwacb_func',cell(1,nCall),'maxiter_huwacb',cell(1,nCall),...
-    'tol_huwacb',cell(1,nCall),'gp_bool',cell(1,nCall));
-Yif_cor_ori = nan([nLall,nCall,nBall],precision);
-Valid_pixels = false([nLall,nCall]);
+logT_extrap = logT;
+for c = Columns_valid
+    if any(isnan(logT(:,:,c)))
+        if ~any(isnan(logT(:,:,c+1)))
+            logT_extrap(:,:,c) = logT(:,:,c+1);
+        elseif ~any(isnan(logT(:,:,c-1)))
+            logT_extrap(:,:,c) = logT(:,:,c-1);
+        elseif ~any(isnan(logT(:,:,c+2)))
+            logT_extrap(:,:,c) = logT(:,:,c+2);
+        elseif ~any(isnan(logT(:,:,c-2)))
+            logT_extrap(:,:,c) = logT(:,:,c-2);
+        else
+            logT_extrap(:,:,c) = logT(:,:,c);
+        end
+    else
+        logT_extrap(:,:,c) = logT(:,:,c);
+    end
+end
 
 switch verbose
     case 0
@@ -314,58 +332,118 @@ switch verbose
         error('VIS=%d is not defined',verbose);
 end
 
-for c = 1:nCall
-    % ADR data is filtered, so the spectra at edges are removed.
-    if ~all(isnan(WA(:,c)))
-        if any(isnan(logT(:,:,c)))
-            if ~any(isnan(logT(:,:,c+1)))
-                logtc = logT(:,:,c+1);
-            elseif ~any(isnan(logT(:,:,c-1)))
-                logtc = logT(:,:,c-1);
-            elseif ~any(isnan(logT(:,:,c+2)))
-                logtc = logT(:,:,c+2);
-            elseif ~any(isnan(logT(:,:,c-2)))
-                logtc = logT(:,:,c-2);
+fprintf('Start processing\n');
+tstart = datetime('now','TimeZone','America/New_York','Format','d-MMM-y HH:mm:ss Z');
+fprintf('Current time is %s.\n',tstart);
+
+switch PROC_MODE
+    case 0
+        Yif_cor = nan([nLall,nCall,nBall],precision);
+        T_est = nan([nBall,nCall],precision);
+        Bg_est = nan([nLall,nCall,nBall],precision);
+        AB_est = nan([nLall,nCall,nBall],precision);
+        ancillaries = struct('X',cell(1,nCall),'lambda',cell(1,nCall),...
+            'nIter',cell(1,nCall),'huwacb_func',cell(1,nCall),...
+            'maxiter_huwacb',cell(1,nCall),'tol_huwacb',cell(1,nCall),...
+            'gp_bool',cell(1,nCall));
+        Yif_cor_ori = nan([nLall,nCall,nBall],precision);
+        Valid_pixels = false([nLall,nCall]);
+        for c = Columns_valid
+            tic;
+            [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
+                bands_opt,WA(:,c),cntRmvl);
+            if ~isempty(opticelib)
+                [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
+                    bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
             else
-                logtc = logT(:,:,c);
+                Aicelib = [];
             end
-        else
-            logtc = logT(:,:,c);
-        end
-        tic;
-        [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
-        if ~isempty(opticelib)
-            [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
-        else
-            Aicelib = [];
-        end
-        if strcmpi(precision,'single')
-            Alib = single(Alib); Aicelib = single(Aicelib);
-        end
-          
-        [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
-            = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...
-              'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
-              'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
-              'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
-              'Aicelib',Aicelib);
+            if strcmpi(precision,'single')
+                Alib = single(Alib); Aicelib = single(Aicelib);
+            end
 
-        Yif_cor(lBool,c,bBool) = reshape(logYifc_cor',[nL,1,nB]);
-        Yif_cor_ori(lBool,c,bBool) = reshape(logYifc_cor_ori',[nL,1,nB]);
-        T_est(bBool,c) = logt_est;
-        Bg_est(lBool,c,bBool) = reshape(logBg',[nL,1,nB]);
-        AB_est(lBool,c,bBool) = reshape(logAB',[nL,1,nB]);
-        ancillaries(c) = ancillary;
-        Valid_pixels(lBool,c) = vldpxl_c';
+            [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
+                = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WA(:,c),logT_extrap(:,:,c),...
+                  'GP',GP(:,:,c),...
+                  'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
+                  'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                  'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                  'Aicelib',Aicelib);
+
+            Yif_cor(lBool,c,bBool) = reshape(logYifc_cor',[nL,1,nB]);
+            Yif_cor_ori(lBool,c,bBool) = reshape(logYifc_cor_ori',[nL,1,nB]);
+            T_est(bBool,c) = logt_est;
+            Bg_est(lBool,c,bBool) = reshape(logBg',[nL,1,nB]);
+            AB_est(lBool,c,bBool) = reshape(logAB',[nL,1,nB]);
+            ancillaries(c) = ancillary;
+            Valid_pixels(lBool,c) = vldpxl_c';
+
+            toc;
+        end
+
+        Yif_cor = exp(Yif_cor); T_est = exp(T_est);
+        Bg_est = exp(Bg_est); AB_est = exp(AB_est);
+        Yif_cor_ori = exp(Yif_cor_ori); logIce = exp(logIce);
         
-        toc;
+    case 1
+        Yif_cor = nan([nBall,nLall,nCall],precision);
+        Yif_isnan = nan([nBall,nLall,nCall]);
+        T_est = nan([nBall,1,nCall],precision);
+        Bg_est = nan([nBall,nLall,nCall],precision);
+        AB_est = nan([nBall,nLall,nCall],precision);
+        Yif_cor_ori = nan([nBall,nLall,nCall],precision);
+        X = [];
 
-    end
+        for ni = 1:n_batch
+            if ni~=n_batch
+                cList = Columns_valid((1+batch_size*(ni-1)):(batch_size*ni));
+            elseif ni==n_batch
+                cList = Columns_valid((1+batch_size*(ni-1)):length(Columns_valid));
+            end
+            for i = 1:length(cList)
+                c = cList(i);
+                [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
+                    bands_opt,WA(:,c),cntRmvl);
+                NA = size(Alib,2);
+                if i==1
+                    Alibs = Alib;
+                else
+                    Alibs = cat(3,Alibs,Alib);
+                end
+            end
+            if strcmpi(precision,'single')
+                Alibs = single(Alibs);
+            end
+            tic;
+            [Yif_cor(bBool,lBool,cList),T_est(bBool,1,cList),...
+                AB_est(bBool,lBool,cList),Bg_est(bBool,lBool,cList),...
+                Yif_isnan(bBool,lBool,cList),Xc]...
+            = sabcondc_v3l1_gpu_batch(logYif(:,:,cList),WA(:,cList),Alibs,...
+                      logT_extrap(:,:,cList),...
+                      BP(:,:,cList),'lambda_a',lambda_a,'precision',precision,...
+                      'nIter',nIter,...
+                      'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                      'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb);
+            Yif_cor_ori(bBool,lBool,cList) = logYif(:,:,cList) - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,cList)),gpuArray(Xc(1,:,:))));
+            if ni==1
+                X = nan(NA+1,nLall,nCall);
+            end
+            X(:,lBool,cList) = Xc;
+            toc;
+        end
+        Yif_cor = permute(Yif_cor,[2,3,1]);
+        Yif_cor_ori = permute(Yif_cor_ori,[2,3,1]);
+        Yif_isnan = permute(Yif_isnan,[2,3,1]);
+        Bg_est = permute(Bg_est,[2,3,1]);
+        AB_est = permute(AB_est,[2,3,1]);
+        T_est  = squeeze(T_est);
+        X = permute(X,[2,3,1]);
+        
+        Yif_cor = exp(Yif_cor); T_est = exp(T_est);
+        Bg_est = exp(Bg_est); AB_est = exp(AB_est);
+        Yif_cor_ori = exp(Yif_cor_ori);
+        
 end
-
-Yif_cor = exp(Yif_cor); T_est = exp(T_est);
-Bg_est = exp(Bg_est); AB_est = exp(AB_est);
-Yif_cor_ori = exp(Yif_cor_ori); logIce = exp(logIce);
 
 tend = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
 fprintf('finish procceing, current time is %s.\n',tend);
@@ -410,7 +488,12 @@ fname_supple = joinPath(save_dir,[basename_cr '.mat']);
 wa = WAdata.img;
 wa = squeeze(wa)';
 fprintf('Saving %s ...\n',fname_supple);
-save(fname_supple,'wa','bands','lls','T_est','ancillaries','Valid_pixels');
+switch PROC_MODE
+    case 0
+        save(fname_supple,'wa','bands','lls','T_est','ancillaries','Valid_pixels');
+    case 1
+        save(fname_supple,'wa','bands','lls','T_est','X','Yif_isnan');
+end
 fprintf('Done\n');
 
 basename_Bg = [basename_cr '_Bg'];
