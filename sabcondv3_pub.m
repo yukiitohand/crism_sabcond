@@ -404,15 +404,23 @@ switch PROC_MODE
                 c = cList(i);
                 [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
                     bands_opt,WA(:,c),cntRmvl);
+                if ~isempty(opticelib)
+                [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
+                    bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
+                else
+                    Aicelib = [];
+                end
                 NA = size(Alib,2);
                 if i==1
                     Alibs = Alib;
+                    Aicelibs = Aicelib;
                 else
                     Alibs = cat(3,Alibs,Alib);
+                    Aicelibs = cat(3,Aicelibs,Aicelib);
                 end
             end
             if strcmpi(precision,'single')
-                Alibs = single(Alibs);
+                Alibs = single(Alibs); Aicelibs = single(Aicelibs);
             end
             tic;
             [Yif_cor(bBool,lBool,cList),T_est(bBool,1,cList),...
@@ -421,7 +429,7 @@ switch PROC_MODE
             = sabcondc_v3l1_gpu_batch(logYif(:,:,cList),WA(:,cList),Alibs,...
                       logT_extrap(:,:,cList),...
                       BP(:,:,cList),'lambda_a',lambda_a,'precision',precision,...
-                      'nIter',nIter,...
+                      'Aicelib',Aicelibs,'nIter',nIter,...
                       'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
                       'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb);
             Yif_cor_ori(bBool,lBool,cList) = logYif(:,:,cList) - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,cList)),gpuArray(Xc(1,:,:))));

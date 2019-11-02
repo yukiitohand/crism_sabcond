@@ -1,4 +1,4 @@
-function [logYif_cor,logt_est,logAB,logBg,logYif_isnan,X] = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
+function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X] = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
 % 
 % INPUTS
 %   logYif
@@ -21,6 +21,7 @@ function [logYif_cor,logt_est,logAB,logBg,logYif_isnan,X] = sabcondc_v3l1_gpu_ba
 %-------------------------------------------------------------------------%
 % varargin
 %-------------------------------------------------------------------------%
+Aicelib = [];
 maxiter_huwacb = int32(100);
 tol_huwacb = 1e-4;
 maxiter_lad = int32(1000);
@@ -28,6 +29,7 @@ tol_lad = 1e-4;
 verbose_lad = 'no';
 nIter = int32(5);
 lambda_a = 0.01;
+lambda_a_ice = 0;
 verbose_huwacb = 'no';
 precision = 'double';
 th_badspc = 0.8;
@@ -37,10 +39,14 @@ if (rem(length(varargin),2)==1)
 else
     for i=1:2:(length(varargin)-1)
         switch upper(varargin{i})
+            case 'AICELIB'
+                Aicelib = varargin{i+1};
             case 'NITER'
                 nIter = varargin{i+1};
             case 'LAMBDA_A'
                 lambda_a = varargin{i+1};
+            case 'LAMBDA_A_ICE'
+                lambda_a_ice = varargin{i+1};
             case 'MAXITER_HUWACB'
                 maxiter_huwacb = round(varargin{i+1});
                 if (maxiter_huwacb <= 0 )
@@ -64,8 +70,7 @@ else
             case 'PRECISION'
                 precision = varargin{i+1};
             otherwise
-                % Hmmm, something wrong with the parameter string
-                error(['Unrecognized option: ''' varargin{i} '''']);
+                error('Unrecognized option: %s',varargin{i});
         end
     end
 end
@@ -79,6 +84,7 @@ end
 %-------------------------------------------------------------------------%
 [B,L,S]    = size(logYif);
 [~,Nlib,~] = size(Alib);
+[~,Nice,~] = size(Aicelib);
 [~,Ntc,~]  = size(logT);
 
 % preprocessing is necessary because some of the values in logYif might be
@@ -101,11 +107,12 @@ for i=1:S
     logYif(:,:,i) = interp_nan_column(logYif(:,:,i),logYif_isnan(:,:,i),WA(:,i));
 end
 % toc;
-logYif = gpuArray(logYif);
-WA     = gpuArray(WA);
-Alib   = gpuArray(Alib);
-logT   = gpuArray(logT);
-BP     = gpuArray(BP);
+logYif  = gpuArray(logYif);
+WA      = gpuArray(WA);
+Alib    = gpuArray(Alib);
+Aicelib = gpuArray(Aicelib);
+logT    = gpuArray(logT);
+BP      = gpuArray(BP);
 logYif_isnan = gpuArray(logYif_isnan);
 logYif_isnan_ori = gpuArray(logYif_isnan_ori);
 badspc = gpuArray(badspc);
@@ -133,10 +140,11 @@ end
 % lambda_a2 = zeros(Nlib+Ntc,L,S,precision);
 % lambda_r = ones(B,L,S,precision);
 lambda_c = zeros(B,L,S,precision,'gpuArray');
-lambda_a_2 = zeros(Nlib+Ntc,L,S,precision,'gpuArray');
+lambda_a_2 = zeros(Nlib+Nice+Ntc,L,S,precision,'gpuArray');
 lambda_r = ones(B,L,S,precision,'gpuArray');
 
-lambda_a_2(:,1+Ntc:end,:) = lambda_a;
+lambda_a_2(:,(1+Ntc):(Ntc+Nice)) = lambda_a_ice;
+lambda_a_2(:,(1+Ntc+Nice):end,:) = lambda_a;
 
 % 
 lambda_c(logYif_isnan) = inf;
@@ -197,8 +205,10 @@ resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
 A = cat(2,logt_est,Alib);
 X = cat(1,Xtc,X(1+Ntc:end,:,:));
 D = cat(1,zeros(1,L,S,precision,'gpuArray'),D(1+Ntc:end,:,:));
-lambda_a_2 = lambda_a.*ones(1+Nlib,L,S,precision,'gpuArray');
+lambda_a_2 = ones(1+Nice+Nlib,L,S,precision,'gpuArray');
 lambda_a_2(1,:,:) = 0;
+lambda_a_2(:,2:(Nice+1)) = lambda_a_ice;
+lambda_a_2(:,(2+Nice):end,:) = lambda_a;
 % rho = ones([1,L,S],precision,'gpuArray');
 Rhov = cat(1,ones(1,1,S,precision,'gpuArray'),Rhov(Ntc+1:Ntc+Nlib+Nc+B,:,:));
 % lambda_tmp = lambda_a;
@@ -268,10 +278,11 @@ end
       'PRECISION',precision);
 
 % substituting all the variables
-logAB        = pagefun(@mtimes,Alib,X(2:end,:,:));
+logAB        = pagefun(@mtimes,Alib,X((2+Nice):end,:,:));
 logBg        = pagefun(@mtimes,C,Z);
+logIce       = pagefun(@mtimes,Aicelib,X(2:(Nice+1),:,:));
 logt_est     = A(:,1,:);
-logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:));
+logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:)) - logIce;
 logYif_cor(logYif_isnan) = nan;
 
 [logYif_cor,logt_est,logAB,logBg,logYif_isnan,X] = gather(logYif_cor,logt_est,logAB,logBg,logYif_isnan,X);

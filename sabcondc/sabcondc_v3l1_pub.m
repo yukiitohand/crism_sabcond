@@ -26,6 +26,7 @@ gp = [];
 precision = 'double';
 gpu = false;
 Aicelib = [];
+th_badspc = 0.8;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -42,6 +43,8 @@ else
                 lambda_a = varargin{i+1};
             case 'LAMBDA_A_ICE'
                 lambda_a_ice = varargin{i+1};
+            case 'THRESHOLD_BADSPC'
+                th_badspc = varargin{i+1};
             case 'MAXITER_HUWACB'
                 maxiter_huwacb = round(varargin{i+1});
                 if (maxiter_huwacb <= 0 )
@@ -69,7 +72,6 @@ else
             case 'GPU'
                 gpu = varargin{i+1};
             otherwise
-                % Hmmm, something wrong with the parameter string
                 error('Unrecognized option: %s', varargin{i});
         end
     end
@@ -111,7 +113,7 @@ logYifc_bprmvd_isnan_ori = logYifc_bprmvd_isnan; % save for later
 % in case there is any nan (corresponding to negative values in the original domain)
 % no model is learned, so just interpolate with neighboring spectels
 logYifc_bprmvd = interp_nan_column(logYifc_bprmvd,logYifc_bprmvd_isnan,wvc_bprmvd);
-vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.8;
+vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.5;
 
 %% initialization of logt_est
 lambda_a_1 = zeros(1,N_A1,precision);
@@ -211,7 +213,7 @@ for j=2:nIter+1
     RR_bprmvd = logYifc_bprmvd_ori-logYifc_model_bprmvd;
     logYifc_bprmvd_isnan = or( logYifc_bprmvd_isnan_ori, abs(RR_bprmvd)>0.015 );
     logYifc_bprmvd = interp_nan_column_given(logYifc_bprmvd_ori,logYifc_bprmvd_isnan,logYifc_model_bprmvd);
-    vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.8;
+    vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < th_badspc;
     
     %evaluate residual again
     RR_bprmvd = logYifc_bprmvd - logYifc_model_bprmvd;
@@ -263,11 +265,11 @@ logt_est = nan(B,1,precision); logt_est(gp_bool) = A_bprmvd(:,1);
 % corrected spectra
 logYifc_cor = nan(B,Ny,precision);
 logYifc_bprmvd(logYifc_bprmvd_isnan) = nan;
-logYifc_cor(gp_bool,:) = logYifc_bprmvd - A_bprmvd(:,1)*X(1,:);
+logYifc_cor(gp_bool,:) = logYifc_bprmvd - A_bprmvd(:,1)*X(1,:)-logIce;
 
 % corrected spectra
 logYifc_cor_ori = nan(B,Ny,precision);
-logYifc_cor_ori(gp_bool,:) = logYifc_bprmvd_ori - A_bprmvd(:,1)*X(1,:);
+logYifc_cor_ori(gp_bool,:) = logYifc_bprmvd_ori - A_bprmvd(:,1)*X(1,:) - logIce;
 
 logYifc_isnan = true(B,Ny);
 logYifc_isnan(gp_bool,:) = logYifc_bprmvd_isnan;
@@ -277,9 +279,10 @@ logBg = interp_nan_column(logBg,logYifc_isnan,wvc);
 
 % residual
 rr_ori = nan(B,Ny,precision);
-rr_ori(gp_bool,:) = logYifc_bprmvd_ori - logAB(gp_bool,:) - logBg(gp_bool,:) - A_bprmvd(:,1)*X(1,:);
+rr_ori(gp_bool,:) = logYifc_bprmvd_ori - logAB(gp_bool,:)...
+    - logBg(gp_bool,:) - A_bprmvd(:,1)*X(1,:) - logIce(gp_bool,:);
 
-vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.7;
+vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < th_badspc;
 
 
 ancillary = [];
