@@ -44,29 +44,31 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 % OUTPUT Parameters
 %   out: struct, 
 %       storing processed images and byproducts. 
-%       For PROC_MODE either of {'CPU_1','GPU_1'}
-%           out.Yif_cor      = Yif_cor;
-%           out.Yif_cor_nan  = Yif_cor_nan;
-%           out.Yif_cor_ori  = Yif_cor_ori;
-%           out.AB_est       = AB_est;
-%           out.Bg_est       = Bg_est;
-%           out.T_est        = T_est;
+%           out.Yif_cor     = Yif_cor;
+%           out.Yif_cor_nr  = Yif_cor_nr;
+%           out.Yif_cor_ori = Yif_cor_ori;
+%           out.AB_est      = AB_est;
+%           out.Bg_est      = Bg_est;
+%           out.T_est       = T_est;
+%           out.WA          = WA;
+%           out.lines       = line_idxes;
+%           out.columns     = Columns;
+%           out.bands       = bands;
+%           out.interleave_out     = interleave_out;
+%           out.subset_columns_out = subset_columns_out;
+%       **ADDITIONAL FIELD**
+%        For PROC_MODE either of {'CPU_1','GPU_1'}
 %           out.Valid_pixels = Valid_pixels;
 %           out.ancillaries  = ancillaries;
 %        For PROC_MODE either of {'GPU_BATCH_1'}
-%           out.Yif_cor      = Yif_cor;
-%           out.Yif_cor_nan  = Yif_cor_nan;
-%           out.Yif_cor_ori  = Yif_cor_ori;
-%           out.AB_est       = AB_est;
-%           out.Bg_est       = Bg_est;
-%           out.T_est        = T_est;
 %           out.Yif_isnan    = Yif_isnan;
 %           out.X            = X;
 %
 % OPTIONAL Parameters 
 %  ## I/O OPTIONS  #-------------------------------------------------------
 %   'SAVE_FILE': boolean
-%       whether or not to save processed images.
+%       whether or not to save processed images. If true, two optioal 
+%       parameters 'FORCE','SKIP_IFEXIST' have no effect.
 %       (default) true
 %   'SAVE_PDIR': any string
 %       root directory path where the processed data are stored. The
@@ -94,6 +96,17 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'ADDITIONAL_SUFFIX': any string,
 %       any additional suffix added to the name of processd images.
 %       (default) 'v1'
+%   'INTERLEAVE_OUT': string, {'lsb','bls'}
+%       interleave option of the images in the output parameter, out. This
+%       is not the interleave used for saving processed images. 
+%       'lsb': Line-Sample-Band
+%       'bls': Band-Line-Sample
+%       (default) 'lsb'
+%   'SUBSET_COLUMNS_OUT': boolean,
+%       whether or not to take only the images with the subset specified by
+%       the optional parameter 'COLUMNS'. This is not the interleave used 
+%       for saving processed images. 
+%       (default) false
 %
 %  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'OPT_IMG': string, {'IF','RA_IF','TRRY','TRRB','TRRC'}
@@ -114,6 +127,10 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'LINES': array
 %       array, defining lines to be used for processing. If empty, then all
 %       the lines are used.
+%       (default) []
+%   {'SAMPLES','COLUMNS','CLIST'}
+%       array, defining columns to be processed. If empty, then all the
+%       columns are processed.
 %       (default) []
 %   'METHODTYPE' : any string
 %       type of the method
@@ -181,12 +198,15 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 global crism_env_vars
 
 % ## I/O OPTIONS #---------------------------------------------------------
-save_file         = true;
-save_pdir         = './resu/';
-save_dir_yyyy_doy = false;
-force             = false;
-skip_ifexist      = false;
-additional_suffix = 'v1';
+save_file          = true;
+save_pdir          = './resu/';
+save_dir_yyyy_doy  = false;
+force              = false;
+skip_ifexist       = false;
+additional_suffix  = 'v1';
+interleave_out     = 'lsb';
+interleave_default = 'lsb';
+subset_columns_out = false;
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 opt_img     = 'TRRB';
@@ -194,6 +214,7 @@ dir_yuk     = crism_env_vars.dir_YUK; % TRRY_PDIR
 ffc_counter = 1;
 bands_opt   = 4;
 line_idxes  = [];                     % LINES
+Columns     = [];
 mt          = 'sabcondpub_v1';        % METHODTYPE
 optBP       = 'pri';                  %{'pri','all','none'}
 verbose     = 0;
@@ -240,6 +261,10 @@ else
                 skip_ifexist = varargin{i+1};
             case 'ADDITIONAL_SUFFIX'
                 additional_suffix = varargin{i+1};
+            case 'INTERLEAVE_OUT'
+                interleave_out = varargin{i+1};
+            case 'SUBSET_COLUMNS_OUT'
+                subset_columns_out = varargin{i+1};
                 
             % ## GENERAL SABCOND OPTIONS #---------------------------------
             case 'OPT_IMG'
@@ -252,6 +277,8 @@ else
                 bands_opt = varargin{i+1};
             case {'LINES','LLS'}
                 line_idxes = varargin{i+1};
+            case {'SAMPLES','COLUMNS','CLIST'}
+                Columns = varargin{i+1};
             case 'METHODTYPE'
                 mt = varargin{i+1};
             case 'OPTBP'
@@ -412,7 +439,7 @@ lBool = false(nLall,1); lBool(line_idxes) = true;
 bBool = false(nBall,1); bBool(bands) = true;
 
 basenameWA = WAdata.basename;
-WA = squeeze(WAdata.img(:,:,bands))';
+WAb = squeeze(WAdata.img(:,:,bands))';
 
 switch upper(opt_img)
     case 'IF'
@@ -481,13 +508,14 @@ clear Yif T at_trans BPdata1 BPdata2 BPdata_post BP_pri1nan BP_pri
 if strcmpi(precision,'single')
     logYif = single(logYif);
     logT   = single(logT);
-    WA     = single(WA);
+    WAb     = single(WAb);
 end
 
 % evaluate valid columns
-valid_columns = ~all(isnan(WA),1);
-Columns = 1:nCall;
-Columns_valid = Columns(valid_columns);
+if isempty(Columns), Columns = 1:nCall; end
+valid_columns = find(~all(isnan(WAb,1)));
+Columns_valid = intersect(Columns,valid_columns);
+if isempty(Columns_valid), fprintf(2,'Specified columns are invalid\n'); end
 
 logT_extrap = logT;
 for c = Columns_valid
@@ -538,6 +566,7 @@ switch upper(PROC_MODE)
         T_est = nan([nBall,nCall],precision);
         Bg_est = nan([nLall,nCall,nBall],precision);
         AB_est = nan([nLall,nCall,nBall],precision);
+        Ice_est = nan([nLall,nCall,nBall],precision);
         ancillaries = struct('X',cell(1,nCall),'lambda',cell(1,nCall),...
             'nIter',cell(1,nCall),'huwacb_func',cell(1,nCall),...
             'maxiter_huwacb',cell(1,nCall),'tol_huwacb',cell(1,nCall),...
@@ -547,10 +576,10 @@ switch upper(PROC_MODE)
         for c = Columns_valid
             tic;
             [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
-                bands_opt,WA(:,c),cntRmvl);
+                bands_opt,WAb(:,c),cntRmvl);
             if ~isempty(opticelib)
                 [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
-                    bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
+                    bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
             else
                 Aicelib = [];
             end
@@ -559,7 +588,7 @@ switch upper(PROC_MODE)
             end
 
             [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
-                = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WA(:,c),logT_extrap(:,:,c),...
+                = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WAb(:,c),logT_extrap(:,:,c),...
                   'GP',GP(:,:,c),...
                   'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
                   'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
@@ -571,6 +600,7 @@ switch upper(PROC_MODE)
             T_est(bBool,c) = logt_est;
             Bg_est(lBool,c,bBool) = reshape(logBg',[nL,1,nB]);
             AB_est(lBool,c,bBool) = reshape(logAB',[nL,1,nB]);
+            Ice_est(lBool,c,bBool) = reshape(logIce',[nL,1,nB]);
             ancillaries(c) = ancillary;
             Valid_pixels(lBool,c) = vldpxl_c';
 
@@ -587,22 +617,23 @@ switch upper(PROC_MODE)
         T_est = nan([nBall,1,nCall],precision);
         Bg_est = nan([nBall,nLall,nCall],precision);
         AB_est = nan([nBall,nLall,nCall],precision);
+        Ice_est = nan([nBall,nLall,nCall],precision);
         Yif_cor_ori = nan([nBall,nLall,nCall],precision);
         X = [];
 
         for ni = 1:n_batch
             if ni~=n_batch
-                cList = Columns_valid((1+batch_size*(ni-1)):(batch_size*ni));
+                Columns = Columns_valid((1+batch_size*(ni-1)):(batch_size*ni));
             elseif ni==n_batch
-                cList = Columns_valid((1+batch_size*(ni-1)):length(Columns_valid));
+                Columns = Columns_valid((1+batch_size*(ni-1)):length(Columns_valid));
             end
-            for i = 1:length(cList)
-                c = cList(i);
+            for i = 1:length(Columns)
+                c = Columns(i);
                 [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
-                    bands_opt,WA(:,c),cntRmvl);
+                    bands_opt,WAb(:,c),cntRmvl);
                 if ~isempty(opticelib)
                 [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
-                    bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
+                    bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                 else
                     Aicelib = [];
                 end
@@ -619,20 +650,20 @@ switch upper(PROC_MODE)
                 Alibs = single(Alibs); Aicelibs = single(Aicelibs);
             end
             tic;
-            [Yif_cor(bBool,lBool,cList),T_est(bBool,1,cList),...
-                AB_est(bBool,lBool,cList),Bg_est(bBool,lBool,cList),...
-                Yif_isnan(bBool,lBool,cList),Xc]...
-            = sabcondc_v3l1_gpu_batch(logYif(:,:,cList),WA(:,cList),Alibs,...
-                      logT_extrap(:,:,cList),...
-                      BP(:,:,cList),'lambda_a',lambda_a,'precision',precision,...
+            [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
+                AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
+                Yif_isnan(bBool,lBool,Columns),Xc]...
+            = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
+                      logT_extrap(:,:,Columns),...
+                      BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
                       'Aicelib',Aicelibs,'nIter',nIter,...
                       'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
                       'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb);
-            Yif_cor_ori(bBool,lBool,cList) = logYif(:,:,cList) - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,cList)),gpuArray(Xc(1,:,:))));
+            Yif_cor_ori(bBool,lBool,Columns) = logYif(:,:,Columns) - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xc(1,:,:))));
             if ni==1
                 X = nan(NA+1,nLall,nCall);
             end
-            X(:,lBool,cList) = Xc;
+            X(:,lBool,Columns) = Xc;
             toc;
         end
         Yif_cor = permute(Yif_cor,[2,3,1]);
@@ -640,11 +671,12 @@ switch upper(PROC_MODE)
         Yif_isnan = permute(Yif_isnan,[2,3,1]);
         Bg_est = permute(Bg_est,[2,3,1]);
         AB_est = permute(AB_est,[2,3,1]);
+        Ice_est = permute(Ice_est,[2,3,1]);
         T_est  = squeeze(T_est);
         X = permute(X,[2,3,1]);
         
         Yif_cor = exp(Yif_cor); T_est = exp(T_est);
-        Bg_est = exp(Bg_est); AB_est = exp(AB_est);
+        Bg_est = exp(Bg_est); AB_est = exp(AB_est); Ice_est = exp(Ice_est);
         Yif_cor_ori = exp(Yif_cor_ori);
     otherwise
         error('Undefined PROC_MODE=%s',PROC_MODE);
@@ -779,7 +811,7 @@ if save_file
         envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
         fprintf('Done\n');
         fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
-        envidatawrite(single(logIce),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
+        envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
         fprintf('Done\n');
     end
 end
@@ -850,23 +882,54 @@ out = [];
 if nargout==0
     
 elseif nargout==1
+    WA = squeeze(WAdata.img(:,:,:))';
+    % take the subset of the columns
+    if subset_columns_out
+        Yif_cor    = Yif_cor(:,Columns,:);
+        Yif_cor_nr = Yif_cor_nr(:,Columns,:);
+        AB_est     = AB_est(:,Columns,:);
+        Bg_est     = Bg_est(:,Columns,:);
+        if ~isempty(opticelib)
+            Ice_est = Ice_est(:,Columns,:);
+        end
+    end
+    % Permute the output.
+    prmt_ordr   = [find(interleave_default(1)==interleave_out),...
+                   find(interleave_default(2)==interleave_out),...
+                   find(interleave_default(3)==interleave_out)];
+    Yif_cor     = permute(Yif_cor,    prmt_ordr);
+    Yif_cor_nr  = permute(Yif_cor_nr, prmt_ordr);
+    Yif_cor_ori = permute(Yif_cor_ori,prmt_ordr);
+    AB_est      = permute(AB_est,     prmt_ordr);
+    Bg_est      = permute(Bg_est,     prmt_ordr);
+    if ~isempty(opticelib)
+        Ice_est = permute(Ice_est,    prmt_ordr);
+    end
+
+    out.Yif_cor     = Yif_cor;
+    out.Yif_cor_nr  = Yif_cor_nr;
+    out.Yif_cor_ori = Yif_cor_ori;
+    out.AB_est      = AB_est;
+    out.Bg_est      = Bg_est;
+    if ~isempty(opticelib)
+        out.Ice_est     = Ice_est;
+    end
+    out.T_est       = T_est;
+    out.WA          = WA;
+    out.lines       = line_idxes;
+    out.columns     = Columns;
+    out.bands       = bands;
+    out.interleave_out     = interleave_out;
+    out.subset_columns_out = subset_columns_out;
+    out.bands       = bands;
     switch upper(PROC_MODE)
         case {'CPU_1','GPU_1'}
-            out.Yif_cor      = Yif_cor;
-            out.Yif_cor_nan  = Yif_cor_nan;
-            out.Yif_cor_ori  = Yif_cor_ori;
-            out.AB_est       = AB_est;
-            out.Bg_est       = Bg_est;
-            out.T_est        = T_est;
             out.Valid_pixels = Valid_pixels;
             out.ancillaries  = ancillaries;
         case {'GPU_BATCH_2'}
-            out.Yif_cor      = Yif_cor;
-            out.Yif_cor_nan  = Yif_cor_nan;
-            out.Yif_cor_ori  = Yif_cor_ori;
-            out.AB_est       = AB_est;
-            out.Bg_est       = Bg_est;
-            out.T_est        = T_est;
+            if column_test
+                X = permute(X(:,Columns,:),[3,1,2]);
+            end
             out.Yif_isnan    = Yif_isnan;
             out.X            = X;
         otherwise
