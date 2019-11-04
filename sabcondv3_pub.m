@@ -33,7 +33,8 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   background image, ".mat" stores other ancillary information.
 %
 %   Processed images will be saved at a specified folder. Read I/O options
-%   in Optional Parameters later for how to specify folders.
+%   in Optional Parameters later for how to specify folders. You can also
+%   select an option not to save the processed images (See 'SAVE_FILE')
 %
 % INPUT Parameters
 %   obs_id : string, 
@@ -859,7 +860,7 @@ elseif nargout==1
             out.T_est        = T_est;
             out.Valid_pixels = Valid_pixels;
             out.ancillaries  = ancillaries;
-        case {'GPU_BATCH_1'}
+        case {'GPU_BATCH_2'}
             out.Yif_cor      = Yif_cor;
             out.Yif_cor_nan  = Yif_cor_nan;
             out.Yif_cor_ori  = Yif_cor_ori;
