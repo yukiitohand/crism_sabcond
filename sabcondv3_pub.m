@@ -2,46 +2,170 @@ function [Yif_cor,Bg_est,AB_est,T_est] = sabcondv3_pub(obs_id,varargin)
 % [Yif_cor,Bg_est,AB_est,T_est] = sabcondv3_pub(obs_id,varargin)
 %   This function performs simultaneous de-noising and atmospheric
 %   correction of CRISM data. Currently 
-
-% INPUT parameters
-
-% huwacb option
-nIter = 5;
-lambda_a = 0.01;
-% band option
-opt_img = 'TRRB';
-bands_opt = 4;
-% library options
-optCRISMspclib = 1;
-optRELAB = 1;
-optUSGSsplib = 1;
-optCRISMTypeLib = 2;
-opticelib = '';
-cntRmvl = 1;
-optInterpid = 1;
-t_mode = 2;
-% file name option
-mt = 'sabcondv3'; % method type
-additional_suffix = 'v1';
-save_pdir = './resu/';
-save_dir_yyyy_doy = false;
-force = false;
-gausssigma = 0.6;
-optBP = 'pri'; %{'pri','all','none'}
-skip_ifexist = false;
-
-% ffc counter
-ffc_counter = 1;
-% specifying lines to be processed
-lls = [];
-
-precision = 'double';
-
-gpu = false;
-verbose = 0;
+%
+% INPUT Parameters
+%  obs_id : string, observation ID of the image to be processed. Currently, 
+%           EPF measurements accompanied with scene measurements are not 
+%           supported.
+%
+% OUTPUT Parameters
+%
+% OPTIONAL Parameters 
+%  ## I/O OPTIONS  #-------------------------------------------------------
+%   'SAVE_PDIR': any string
+%       root directory path where the processed data are stored. The
+%       processed image will be saved at <SAVE_PDIR>/CCCNNNNNNNN, where CCC
+%       the class type of the obervation and NNNNNNNN is the observation id.
+%       It doesn't matter if trailing slash is there or not.
+%       (default) './res/'
+%   'SAVE_DIR_YYYY_DOY': boolean
+%       if true, processed images are saved at 
+%           <SAVE_PDIR>/YYYY_DOY/CCCNNNNNNNN,
+%       otherwise, 
+%           <SAVE_PDIR>/CCCNNNNNNNN.
+%       (default) false
+%   'FORCE': boolean
+%       if true, processing is forcefully performed and all the existing
+%       images will overwritten. Otherwise, you will see a prompt asking
+%       whether or not to continue and overwrite images or not when there
+%       alreadly exist processed images.
+%       (default) false
+%   'SKIP_IF_EXIST': boolean
+%       if true, processing will be automatically skipped if there already 
+%       exist processed images. No prompt asking whether or not to continue
+%       and overwrite images or not.
+%       (default) false
+%   'ADDITIONAL_SUFFIX': any string,
+%       any additional suffix added to the name of processd images.
+%       (default) 'v1'
+%
+%  ## GENERAL SABCOND OPTIONS #--------------------------------------------
+%   'OPT_IMG': string, {'IF','RA_IF','TRRY','TRRB','TRRC'}
+%       type of input image to be used
+%       (default) 'TRRB'
+%   'TRRY_PDIR': any string
+%       root directory path where {'TRRY','TRRB','TRRC'} images are stored.
+%       If you choose either {'IF', 'RA_IF'} for 'OPT_IMG', you do not need
+%       to specify this.
+%   'FFC_IF_COUNTER': integer, {1,3}
+%       Observation counter of the image to be processed. Used only for 
+%       processing FFC images. 
+%       (default) 1
+%   'BANDS_OPT' : integer, {4}
+%       an option for wavelength channels to use. This is the 
+%       input for genBands()
+%       (default) 4
+%   'LINES': array
+%       array, defining lines to be used for processing. If empty, then all
+%       the lines are used.
+%       (default) []
+%   'METHODTYPE' : any string
+%       type of the method
+%       (default) sabcondv3_pub
+%   'OPTBP' : string {'pri','all','none'}
+%       option defining bad pixel information to be used.
+%       (default) 'pri'
+%   'VERBOSE': integer, {0,1,2}
+%       option for how much information is displayed.
+%
+%  ## TRANSMISSION SPECTRUM OPTIONS #--------------------------------------
+%    'T_MODE': integer
+%       option for what kind of transmission spectrum frame is used.
+%       (default) 2
+%
+%  ## LIBRARY OPTIONS #----------------------------------------------------
+%   'CNTRMVL': boolean
+%       whether or not to perform continuum removal on library spectra
+%       (default) 1
+%   'OPTINTERPID': {1}
+%       option defining how the interpolation of invalid channels of the 
+%       library spectra are dealt with.
+%       (default) 1
+%   'OPT_CRISMSPCLIB': integer, {1}
+%       library option of the CRISM spectral library.
+%       (default) 1
+%   'OPT_RELAB': integer
+%       integer, library option of RELAB
+%       (default) 1
+%   'OPT_SPLIBUSGS': integer
+%       integer, library option of USGS splib
+%       (default) 1
+%   'OPT_CRISMTYPELIB': integer
+%       integer, library option of CRISM MICA library
+%       (default) 1
+%   'OPT_ICELIB': integer
+%       integer, library option of ICE library
+%       (default) '' (no ice)
+%
+%  ## SABCONDC OPTIONS #---------------------------------------------------
+%   'NITER': integer
+%       the number of outer iteration
+%       (default) 5
+%   'LAMBDA_A': double array or scalar
+%       trade-off parameter of the cost function.
+%       (default) 0.01
+%
+%  ## PROCESSING OPTIONS #-------------------------------------------------
+%   'PRECISION': string, {'single','double'}
+%       percision with which processing is performed.
+%       (default) 'double'
+%   'PROC_MODE': string, {'CPU_1','GPU_1','GPU_BATCH_2'}
+%       option for which processor is used CPU or GPU, and which algorithm
+%       is used, formatted as PPP[_BATCH]_A, where PPP represents 
+%       processor, and A is the index for algorithm. BATCH indicates 
+%       (default) 'CPU_1'
+%       **ALGORITHM description**
+%           1: Bad pixel detected during processing are substitueded by
+%              model values.
+%           2: Bad pixel detected during processing are exactly ignored
+%              during the processing.
+%       Currently, multiple GPU processing is not supported.
+%   
+%
+% 
 
 global crism_env_vars
-dir_yuk = crism_env_vars.dir_YUK;
+
+% ## I/O OPTIONS #---------------------------------------------------------
+save_pdir         = './resu/';
+save_dir_yyyy_doy = false;
+force             = false;
+skip_ifexist      = false;
+additional_suffix = 'v1';
+
+% ## GENERAL SABCOND OPTIONS #---------------------------------------------
+opt_img     = 'TRRB';
+dir_yuk     = crism_env_vars.dir_YUK; % TRRY_PDIR
+ffc_counter = 1;
+bands_opt   = 4;
+lines       = [];                     % LINES
+mt          = 'sabcondv3';            % METHODTYPE
+optBP       = 'pri';                  %{'pri','all','none'}
+verbose     = 0;
+
+% ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
+t_mode = 2;
+
+% ## LIBRARY OPTIONS #-----------------------------------------------------
+cntRmvl         = 1;
+optInterpid     = 1;
+optCRISMspclib  = 1;
+optRELAB        = 1;
+optUSGSsplib    = 1;
+optCRISMTypeLib = 2;
+opticelib       = '';
+
+% ## SABCONDC OPTIONS #----------------------------------------------------
+nIter = 5;
+lambda_a = 0.01;
+
+% ## PROCESSING OPTIONS #--------------------------------------------------
+precision = 'double';
+PROC_MODE = 'CPU_1';
+
+% ## ETCETERA #------------------------------------------------------------
+gausssigma = 0.6;
+%gpu = false;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -90,12 +214,12 @@ else
                 skip_ifexist = varargin{i+1};
             case 'TRRY_PDIR'
                 dir_yuk = varargin{i+1};
-            case 'LLS'
-                lls = varargin{i+1};
+            case {'LINES','LLS'}
+                lines = varargin{i+1};
             case 'PRECISION'
                 precision = varargin{i+1};
-            case 'GPU'
-                gpu = varargin{i+1};
+            case 'PROC_MODE'
+                PROC_MODE = varargin{i+1};
             case 'VERBOSE'
                 verbose = varargin{i+1};
             otherwise
@@ -108,9 +232,7 @@ if force && skip_ifexist
     error('You are forcing or skipping? Not sure what you want');
 end
 
-if ~exist(save_pdir,'dir')
-    mkdir(save_pdir);
-end
+if ~exist(save_pdir,'dir'), mkdir(save_pdir); end
 
 fprintf('lambda_a:%f\n',lambda_a);
 fprintf('nIter:%d\n',nIter);
@@ -123,6 +245,25 @@ fprintf('opt_icelib: %d\n',opticelib);
 bands = genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
+
+% Evaluate GPU
+switch upper(PROC_MODE)
+    case 'CPU_1'
+        gpu = false;
+    case {'GPU_1','GPU_BATCH_2'}
+        gpu = true;
+    otherwise
+        error('Undefined PROC_MODE=%s',PROC_MODE');
+end
+if gpu
+    if gpuDeviceCount==0
+        error('No GPU is detected. Use CPU option');
+    elseif gpuDeviceCount > 1
+        fprintf('Multiple GPUs are detected. The first one is used for processing');  
+    end
+end
+
+
 
 % open log file
 username = char(java.lang.System.getProperty('user.name'));
@@ -161,10 +302,10 @@ end
 [suffix] = const_suffix_v2(mt,cntRmvl,libprefix,optInterpid,bands_opt,nIter,additional_suffix);
 fprintf('suffix will be \n%s.\n',suffix);
 
-switch opt_img
-    case 'if'
+switch upper(opt_img)
+    case 'IF'
         basename_cr = [crism_obs.info.basenameIF suffix];
-    case 'ra_if'
+    case 'RA_IF'
         basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
     case {'TRRY','TRRB','TRRC'}
         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
@@ -209,22 +350,22 @@ end
 TRRIFdata.load_basenamesCDR();
 WAdata = TRRIFdata.readCDR('WA'); WAdata.readimgi();
 nLall = TRRIFdata.hdr.lines; nCall = TRRIFdata.hdr.samples; nBall = TRRIFdata.hdr.bands;
-if isempty(lls), lls = 1:nLall; end
-nL = length(lls); nB = length(bands);
-lBool = false(nLall,1); lBool(lls) = true;
+if isempty(lines), lines = 1:nLall; end
+nL = length(lines); nB = length(bands);
+lBool = false(nLall,1); lBool(lines) = true;
 bBool = false(nBall,1); bBool(bands) = true;
 
 basenameWA = WAdata.basename;
 WA = squeeze(WAdata.img(:,:,bands))';
 
-switch opt_img
-    case 'if'
+switch upper(opt_img)
+    case 'IF'
         if TRRIF_is_empty
             error('TRR I/F does not exist.');
         else
             Yif = TRRIFdata.readimgi();
         end
-    case 'ra_if'
+    case 'RA_IF'
         TRRRAIFdata = CRISMdataCAT([crism_obs.info.basenameRA '_IF'],crism_obs.info.dir_trdr,'ra_if');
         Yif = TRRRAIFdata.readimgi();
     case {'TRRY','TRRB','TRRC'}
@@ -235,7 +376,7 @@ switch opt_img
         error('opt_img = %s is not defined',opt_img);
 end
 
-Yif = Yif(lls,:,bands);
+Yif = Yif(lines,:,bands);
 Yif(Yif<=1e-8) = nan;
 logYif = log(Yif);
 logYif = permute(logYif,[3,1,2]);
@@ -336,8 +477,8 @@ fprintf('Start processing\n');
 tstart = datetime('now','TimeZone','America/New_York','Format','d-MMM-y HH:mm:ss Z');
 fprintf('Current time is %s.\n',tstart);
 
-switch PROC_MODE
-    case 0
+switch upper(PROC_MODE)
+    case {'CPU_1','GPU_1'}
         Yif_cor = nan([nLall,nCall,nBall],precision);
         T_est = nan([nBall,nCall],precision);
         Bg_est = nan([nLall,nCall,nBall],precision);
@@ -385,7 +526,7 @@ switch PROC_MODE
         Bg_est = exp(Bg_est); AB_est = exp(AB_est);
         Yif_cor_ori = exp(Yif_cor_ori); logIce = exp(logIce);
         
-    case 1
+    case 'GPU_BATCH_2'
         Yif_cor = nan([nBall,nLall,nCall],precision);
         Yif_isnan = nan([nBall,nLall,nCall]);
         T_est = nan([nBall,1,nCall],precision);
