@@ -77,7 +77,7 @@ else
     end
 end
 
-Aice_notisempty = isempty(Aicelib);
+Aice_notisempty = ~isempty(Aicelib);
 
 [B,Ny]   = size(logYifc);
 [~,Nlib] = size(Alib);
@@ -116,7 +116,7 @@ logYifc_bprmvd = interp_nan_column(logYifc_bprmvd,logYifc_bprmvd_isnan,wvc_bprmv
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.5;
 
 %% initialization of logt_est
-lambda_a_1 = zeros(1,N_A1,precision);
+lambda_a_1 = zeros(N_A1,1,precision);
 lambda_tmp = lambda_a;
 lambda_tmp_ice = lambda_a_ice;
 % lambda_a_1(idxAlibstrt:end) = lambda_tmp;
@@ -178,7 +178,7 @@ idxAice = false(1,N_A); idxAice(2:(Nice+1)) = true;
 idxAlib = false(1,N_A); idxAlib((Nice+2):end) = true;
 
 % always update lambda_tmp
-lambda_a_2 = zeros(1,N_A);
+lambda_a_2 = zeros(N_A,1);
 lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
 lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
 
@@ -258,18 +258,30 @@ end
 %%
 % original wavelength channels
 logBg = nan(B,Ny,precision); logBg(gp_bool,:) = C*Z;
-logAB = Alib*X(idxAlib,:); logIce = Aicelib*X(idxAice,:);
+logAB = Alib*X(idxAlib,:); 
+if Aice_notisempty
+    logIce = Aicelib*X(idxAice,:);
+else
+    logIce = [];
+end
 
 logt_est = nan(B,1,precision); logt_est(gp_bool) = A_bprmvd(:,1);
 
 % corrected spectra
 logYifc_cor = nan(B,Ny,precision);
 logYifc_bprmvd(logYifc_bprmvd_isnan) = nan;
-logYifc_cor(gp_bool,:) = logYifc_bprmvd - A_bprmvd(:,1)*X(1,:)-logIce;
-
+if Aice_notisempty
+    logYifc_cor(gp_bool,:) = logYifc_bprmvd - A_bprmvd(:,1)*X(1,:)-logIce(gp_bool,:);
+else
+    logYifc_cor(gp_bool,:) = logYifc_bprmvd - A_bprmvd(:,1)*X(1,:);
+end
 % corrected spectra
 logYifc_cor_ori = nan(B,Ny,precision);
-logYifc_cor_ori(gp_bool,:) = logYifc_bprmvd_ori - A_bprmvd(:,1)*X(1,:) - logIce;
+if Aice_notisempty
+    logYifc_cor_ori(gp_bool,:) = logYifc_bprmvd_ori - A_bprmvd(:,1)*X(1,:) - logIce(gp_bool);
+else
+    logYifc_cor_ori(gp_bool,:) = logYifc_bprmvd_ori - A_bprmvd(:,1)*X(1,:);
+end
 
 logYifc_isnan = true(B,Ny);
 logYifc_isnan(gp_bool,:) = logYifc_bprmvd_isnan;
@@ -279,8 +291,13 @@ logBg = interp_nan_column(logBg,logYifc_isnan,wvc);
 
 % residual
 rr_ori = nan(B,Ny,precision);
-rr_ori(gp_bool,:) = logYifc_bprmvd_ori - logAB(gp_bool,:)...
-    - logBg(gp_bool,:) - A_bprmvd(:,1)*X(1,:) - logIce(gp_bool,:);
+if Aice_notisempty
+    rr_ori(gp_bool,:) = logYifc_bprmvd_ori - logAB(gp_bool,:)...
+        - logBg(gp_bool,:) - A_bprmvd(:,1)*X(1,:) - logIce(gp_bool,:);
+else
+    rr_ori(gp_bool,:) = logYifc_bprmvd_ori - logAB(gp_bool,:)...
+        - logBg(gp_bool,:) - A_bprmvd(:,1)*X(1,:);
+end
 
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < th_badspc;
 
