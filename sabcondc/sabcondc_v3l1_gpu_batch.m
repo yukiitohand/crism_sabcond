@@ -3,57 +3,138 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc]...
 % [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc]...
 %     = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
 %
-% Perform sabcondc_v3l1 with batch. BATCH mode is automatically activated
-% if the third dimension S is greater than 1, otherwise normal function is
-% used. 
+% Perform sabcondc_v3l1 with Algorithm 2 (bad entries are exactly ignored).
+% BATCH mode is also supported (GPU is needed). BATCH mode is activated by
+% default if the third dimension of input matrices is greater than 1.
 %
 % INPUT PARAMETERS
 %   logYif: array, [B x L x S]
-%       Each of the page is the observation
+%       each of the page is the observation
 %   WA: array, [B x 1 x S]
-%       Wavelength frame
+%       wavelength frame
 %   Alib: array, [B x Nlib x S]
-%       Each of the page is library matrix for column s
+%       each of the page is library matrix for column s
 %   logT: array, [B x Ntc x S]
-%       Each of the page is collection of transmission spectra for column s
+%       each of the page is collection of transmission spectra for column s
 %   BP: boolean, [B x 1 x S]
-%       Bad pixel information
+%       bad pixel information
 %
 % OUTPUT PARAMETERS
-%   
-%    
-% [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,X,vldpxl]
+%   logt_est: array, [B x 1 x S]
+%       estimated transmission spectrum
+%   logYifc_cor: array, [B x L x S]
+%       corrected i/f spectra
+%   logAB: array, [B x L x S]
+%       estimated absorption spectra
+%   logBg: array, [B x L x S]
+%       estimated background spectra
+%   logIce: array, [B x L x S]
+%       estimated ice contributions
+%   logYif_isnan: boolean array, [B x L x S]
+%       bad entries are flagged.
+%   X: [(1+Nlib+Nice) x L x S]
+%       estimated abundance matrix
+%   badspc: boolean array, [1 x L x S]
+%       flag if the spectra has too many bad entries (>THREHOLD_BADSPC)
 %
 % OPTIONAL PARAMETERS
-%   ''
+%  ## GENERAL PARAMETERS #-------------------------------------------------
+%   'AICELIB': array, [L x Nc x S]
+%       ice absporption library
+%       (default) []
+%   'NITER': integer
+%       the number of outer iterations
+%       (default) 5
+%   'THRESHOLD_BADSPC': scalar
+%       threshold value for which the spectra is considered to be
+%       completely corrupted
+%       (default) 0.8
+%  ## HUWACB PARAMETERS #--------------------------------------------------
+%   'LAMBDA_A': scalar,
+%        trade-off parameter, controling sparsity of the coefficients of Alib
+%        (default) 0.01
+%   'LAMBDA_A_ICE': scalar,
+%        trade-off parameter, controling sparsity of the coefficients of
+%        Aicelib
+%        (default) 0.0
+%   'MAXITER_HUWACB': integer
+%        maximum number of iteration for HUWACB
+%        (default) 100
+%   'TOL_HUWACB': scalar
+%        tolerance value for HUWACB
+%        (default) 1e-4
+%   'VERBOSE_HUWACB': {'yes','no'}
+%        whether or not to print the result of HUWACB or not 
+%        (default) 'no'
+%   'DEBUG_HUWACB': boolean
+%        whether or not to debug HUWACB or not 
+%        (default) false
+%  ## LAD PARAMETERS #-----------------------------------------------------
+%   'MAXITER_LAD': integer
+%        maximum number of iteration for LAD
+%        (default) 1000
+%   'TOL_LAD': scalar
+%        tolerance value for LAD
+%        (default) 1e-4
+%   'VERBOSE_LAD': {'yes','no'}
+%        whether or not to print the result of LAD or not 
+%        (default) 'no'
+%   'DEBUG_LAD': boolean
+%        whether or not to debug LAD or not 
+%        (default) false
+%  ## PROCESSING PARAMETERS #----------------------------------------------
+%   'GPU': boolean
+%        whether or not to use GPU or GPU
+%        (default) true
+%   'BATCH': boolean
+%        whether or not to use BATCH mode processing. Only valid if 'GPU'
+%        is set true.
+%        (default) true if the input matrices has multiple pages, false
+%                  otherwise
+%   'PRECISION': {'single','doulbe'}
+%        data type used for calculation
+%        (default) 'double'
 
-%%
-%-------------------------------------------------------------------------%
-% varargin
-%-------------------------------------------------------------------------%
-Aicelib = [];
-maxiter_huwacb = int32(100);
-tol_huwacb = 1e-4;
-maxiter_lad = int32(1000);
-tol_lad = 1e-4;
-verbose_lad = 'no';
-nIter = int32(5);
-lambda_a = 0.01;
-lambda_a_ice = 0;
-verbose_huwacb = 'no';
-precision = 'double';
+%% GET SIZE
+[B,L,S]    = size(logYif);
+[~,Nlib,~] = size(Alib);
+[~,Ntc,~]  = size(logT);
+
+%% VARARGIN
+% ## GENERAL PARAMETERS #--------------------------------------------------
+Aicelib   = [];
+nIter     = int32(5);
 th_badspc = 0.8;
-gpu = true;
+% ## HUWACB PARAMETERS #---------------------------------------------------
+lambda_a       = 0.01;
+lambda_a_ice   = 0;
+maxiter_huwacb = int32(100);
+tol_huwacb     = 1e-4;
+verbose_huwacb = 'no';
+debug_huwacb   = false;
+% ## LAD PARAMETERS #------------------------------------------------------
+maxiter_lad = int32(1000);
+tol_lad     = 1e-4;
+verbose_lad = 'no';
+debug_lad   = false;
+% ## PROCESSING PARAMETERS #-----------------------------------------------
+gpu       = true;
+batch     = S>1;
+precision = 'double';
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
 else
     for i=1:2:(length(varargin)-1)
         switch upper(varargin{i})
+            % ## GENERAL PARAMETERS #--------------------------------------
             case 'AICELIB'
                 Aicelib = varargin{i+1};
             case 'NITER'
                 nIter = varargin{i+1};
+            case 'THRESHOLD_BADSPC'
+                th_badspc = varargin{i+1};
+            % ## HUWACB PARAMETERS #---------------------------------------
             case 'LAMBDA_A'
                 lambda_a = varargin{i+1};
             case 'LAMBDA_A_ICE'
@@ -67,6 +148,9 @@ else
                 tol_huwacb = varargin{i+1};
             case 'VERBOSE_HUWACB'
                 verbose_huwacb = varargin{i+1};
+            case 'DEBUG_HUWACB'
+                debug_huwacb = varargin{i+1};
+            % ## LAD PARAMETERS #------------------------------------------
             case 'MAXITER_LAD'
                 maxiter_lad = round(varargin{i+1});
                 if (maxiter_huwacb <= 0 )
@@ -76,10 +160,13 @@ else
                 tol_lad = varargin{i+1};
             case 'VERBOSE_LAD'
                 verbose_lad = varargin{i+1};
-            case 'THRESHOLD_BADSPC'
-                th_badspc = varargin{i+1};
+            case 'DEBUG_LAD'
+                debug_lad = varargin{i+1};
+            % ## PROCESSING PARAMETERS #-----------------------------------
             case 'GPU'
                 gpu = varargin{i+1};
+            case 'BATCH'
+                batch = varargin{i+1};
             case 'PRECISION'
                 precision = varargin{i+1};
             otherwise
@@ -93,17 +180,19 @@ end
 %-------------------------------------------------------------------------%
 % Preprocessing
 %-------------------------------------------------------------------------%
-[B,L,S]    = size(logYif);
-[~,Nlib,~] = size(Alib);
 [~,Nice,~] = size(Aicelib);
-[~,Ntc,~]  = size(logT);
 
-if S>1
-    batch = true; gpu_varargin = {'gpuArray'};
+if batch
+    gpu_varargin = {'gpuArray'};
 else
     gpu_varargin = {};
 end
-if batch && ~gpu, error('BATCh Processing only works when GPU is set true'); end
+if batch && ~gpu, error('BATCH Processing only works when GPU is set true'); end
+if batch && S==1, fprintf('BATCH Processing is efficient if you have 3D array.'); end
+
+if Nice==0
+    Aicelib = zeros(B,0,S,precision,gpu_varargin{:});
+end
 
 % preprocessing is necessary because some of the values in logYif might be
 % nans due to harse noise.
@@ -146,11 +235,19 @@ A = cat(2,logT,Alib);
 % compute concave basese beforehand
 % C = concaveOperator(WA);
 % Dinv = C \ eye(B);
-C = concaveOperator_v2(WA);
-Dinv = pagefun(@mldivide,C,eye(B,gpu_varargin{:}));
-s_d = vnorms(Dinv,1);
-C = Dinv./s_d;
-clear Dinv s_d;
+if batch
+    C = concaveOperator_v2(WA);
+    Dinv = pagefun(@mldivide,C,eye(B,gpu_varargin{:}));
+    s_d = vnorms(Dinv,1);
+    C = Dinv./s_d;
+    clear Dinv s_d;
+else
+    C = continuumDictionary(WA);
+    s_c = vnorms(C,1);
+    C = C./s_c;
+    C = C*2;
+    clear s_c;
+end
 [~,Nc,~] = size(C);
 if strcmpi(precision,'single')
     C = single(C);
@@ -185,11 +282,11 @@ if batch
                 'tol',1e-5,'maxiter',maxiter_huwacb,'verbose',verbose_huwacb,...
                 'precision',precision); % toc;
 else
-    [  X,Z,~,D,rho,Rhov,~,~,cost_val]...
-    = huwacbl1_admm_gat_a(A,logYif,gather(WA),'LAMBDA_A',lambda_a2,...
+    [  X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+    = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
     'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
-    'tol',1e-5,'maxiter',100,'verbose','no',...
-    'precision',precision,'gpu',true,'Concavebase',C,'debug',false);
+    'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
+    'precision',precision,'gpu',gpu,'Concavebase',C,'debug',debug_huwacb);
 end
 % toc;
 
@@ -226,7 +323,11 @@ if batch
                 'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
                 'verbose',verbose_lad,'precision',precision);
 else
-    
+    [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
+    = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
+             'lambda_r',permute(lambda_r,[2,1,3]),...
+             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
+             'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
 end
 %
 logt_est = permute(logt_est,[2,1,3]);
@@ -266,12 +367,13 @@ for n=2:nIter
                     'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
                     'PRECISION',precision);
         else
-%         [ X1,Z1,~,R,D1,rho1,Rhov1,~,~,cost_val1]...
-%         = huwacbl1_admm_gat_a(A,logYif,gather(WA),'LAMBDA_A',lambda_a2,...
-%         'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
-%         'Z0',Z,'D0',D,'X0',X,'R0',RR,...
-%         'tol',1e-5,'maxiter',100,'verbose','no',...
-%         'precision',precision,'gpu',true,'Concavebase',C,'debug',false);
+            [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+            = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
+            'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+            'Z0',Z,'D0',D,'X0',X,'R0',RR,...
+            'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
+            'precision',precision,'gpu',gpu,'Concavebase',C,...
+            'debug',debug_huwacb);
         end
     else
         if batch
@@ -281,7 +383,13 @@ for n=2:nIter
               'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
               'PRECISION',precision,'Tcond',Tcond);
         else
-            
+            [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+            = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
+            'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+            'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+            'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+            'precision',precision,'gpu',gpu,'Concavebase',C,...
+            'debug',debug_huwacb);
         end
     end
     % toc;
@@ -308,11 +416,16 @@ for n=2:nIter
         RR  = RR + A(:,1)*X(1,:);
     end
     if batch
-        [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
+        [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val,Kcond]...
            = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...% 'rho',rho_lad,'Rhov',Rhov_lad,...
                 'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
                 'verbose',verbose_lad,'precision',precision,'Kcond',Kcond);
     else
+        [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
+            = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
+             'lambda_r',permute(lambda_r,[2,1,3]),...
+             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
+             'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
         
     end
     logt_est = permute(logt_est,[2,1,3]);
@@ -325,8 +438,6 @@ for n=2:nIter
     
     A(:,1,:) = logt_est;
     
-    % lambda_tmp = lambda_tmp*resNewNrm/resNrm;
-    
 end
 
 %%
@@ -334,13 +445,20 @@ end
 % last iteration
 %-------------------------------------------------------------------------%
 if batch
-    [ X,Z,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,logYif,C,...
-          'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
-          'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
-          'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
-          'PRECISION',precision);
+    [ X,Z,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,...
+        logYif,C,...
+        'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
+        'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
+        'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+        'PRECISION',precision);
 else
-    
+    [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+            = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
+            'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+            'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+            'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+            'precision',precision,'gpu',gpu,'Concavebase',C,...
+            'debug',debug_huwacb);
 end
 
 % substituting all the variables
@@ -349,6 +467,11 @@ if batch
     logBg        = pagefun(@mtimes,C,Z);
     logIce       = pagefun(@mtimes,Aicelib,X(2:(Nice+1),:,:));
     logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:)) - logIce;
+%     if ~isempty(Aicelib)
+%         
+%     else
+%         logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:));
+%     end
 else
     logAB = Alib*X((2+Nice):end,:);
     logBg = C*Z;

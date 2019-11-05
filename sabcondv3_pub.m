@@ -187,7 +187,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'PRECISION': string, {'single','double'}
 %       percision with which processing is performed.
 %       (default) 'double'
-%   'PROC_MODE': string, {'CPU_1','GPU_1','GPU_BATCH_2'}
+%   'PROC_MODE': string, {'CPU_1','GPU_1','CPU_2','GPU_2','GPU_BATCH_2'}
 %       option for which processor is used CPU or GPU, and which algorithm
 %       is used, formatted as PPP[_BATCH]_A, where PPP represents 
 %       processor, and A is the index for algorithm. BATCH indicates 
@@ -245,9 +245,9 @@ nIter = 5;
 lambda_a = 0.01;
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
-precision = 'double';
-PROC_MODE = 'CPU_1';
-n_batch   = 10;
+precision  = 'double';
+PROC_MODE  = 'CPU_1';
+batch_size = 10;
 
 % ## ETCETERA #------------------------------------------------------------
 % gausssigma = 0.6;
@@ -330,7 +330,7 @@ else
             case 'PROC_MODE'
                 PROC_MODE = varargin{i+1};
             case 'BATCH_SIZE'
-                n_batch = varargin{i+1};
+                batch_size = varargin{i+1};
                 
             otherwise
                 error('Unrecognized option: %s',varargin{i});
@@ -349,9 +349,9 @@ optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 % libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
 
 switch upper(PROC_MODE)
-    case 'CPU_1'
+    case {'CPU_1','CPU_2'}
         gpu = false;
-    case {'GPU_1','GPU_BATCH_2'}
+    case {'GPU_1','GPU_2','GPU_BATCH_2'}
         gpu = true;
     otherwise
         error('Undefined PROC_MODE=%s',PROC_MODE);
@@ -590,10 +590,7 @@ switch upper(PROC_MODE)
         if ~isempty(opticelib)
             Ice_est = nan([nLall,nCall,nBall],precision);
         end
-        ancillaries = struct('X',cell(1,nCall),'lambda',cell(1,nCall),...
-            'nIter',cell(1,nCall),'huwacb_func',cell(1,nCall),...
-            'maxiter_huwacb',cell(1,nCall),'tol_huwacb',cell(1,nCall),...
-            'gp_bool',cell(1,nCall));
+        ancillaries = struct('X',cell(1,nCall),'gp_bool',cell(1,nCall));
         Yif_cor_ori = nan([nLall,nCall,nBall],precision);
         Valid_pixels = false([nLall,nCall]);
         
@@ -661,20 +658,20 @@ switch upper(PROC_MODE)
             Ice_est = exp(Ice_est);
         end
     
-    case 'GPU_BATCH_2'
+    case {'CPU_2','GPU_2','GPU_BATCH_2'}
         %%
         Yif_cor = nan([nBall,nLall,nCall],precision);
         Yif_isnan = nan([nBall,nLall,nCall]);
         T_est = nan([nBall,1,nCall],precision);
         Bg_est = nan([nBall,nLall,nCall],precision);
         AB_est = nan([nBall,nLall,nCall],precision);
-        badspcs = true([1,nLall,nCall],precision);
-        if ~isempty(opticelib)
-            Ice_est = nan([nBall,nLall,nCall],precision);
-        end
+        badspcs = true([1,nLall,nCall]);
+        Ice_est = nan([nBall,nLall,nCall],precision);
         Yif_cor_ori = nan([nBall,nLall,nCall],precision);
         X = [];
-
+        
+        n_batch = ceil(length(Columns_valid)/batch_size);
+        
         for ni = 1:n_batch
             if ni~=n_batch
                 Columns = Columns_valid((1+batch_size*(ni-1)):(batch_size*ni));
@@ -712,8 +709,19 @@ switch upper(PROC_MODE)
                       BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
                       'Aicelib',Aicelibs,'nIter',nIter,...
                       'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
-                      'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb);
-            Yif_cor_ori(bBool,lBool,Columns) = logYif(:,:,Columns) - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xc(1,:,:))));
+                      'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                      'gpu',gpu);
+            switch upper(PROC_MODE)
+                case {'GPU_BATCH_2'}
+                Yif_cor_ori(bBool,lBool,Columns)...
+                    = logYif(:,:,Columns) ...
+                    - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xc(1,:,:))))...
+                    -Ice_est(bBool,lBool,Columns);
+                otherwise
+                    Yif_cor_ori(bBool,lBool,Columns) ...
+                    = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xc(1,:,:)...
+                      -Ice_est(bBool,lBool,Columns);
+            end
             if ni==1
                 X = nan(NA+1,nLall,nCall);
             end
@@ -725,19 +733,15 @@ switch upper(PROC_MODE)
         Yif_isnan = permute(Yif_isnan,[2,3,1]);
         Bg_est = permute(Bg_est,[2,3,1]);
         AB_est = permute(AB_est,[2,3,1]);
-        if ~isempty(opticelib)
-            Ice_est = permute(Ice_est,[2,3,1]);
-        end
+        Ice_est = permute(Ice_est,[2,3,1]);
         T_est  = squeeze(T_est);
         X = permute(X,[2,3,1]);
         badspcs = squeeze(badspcs);
         Valid_pixels = ~badspcs;
-        
+    
         Yif_cor = exp(Yif_cor); T_est = exp(T_est);
         Bg_est = exp(Bg_est); AB_est = exp(AB_est); 
-        if ~isempty(opticelib)
-            Ice_est = exp(Ice_est);
-        end
+        Ice_est = exp(Ice_est);
         Yif_cor_ori = exp(Yif_cor_ori);
     otherwise
         error('Undefined PROC_MODE=%s',PROC_MODE);
@@ -977,6 +981,7 @@ elseif nargout==1
     Yif_isnan   = permute(Yif_isnan,  prmt_ordr);
     AB_est      = permute(AB_est,     prmt_ordr);
     Bg_est      = permute(Bg_est,     prmt_ordr);
+    Valid_pixels= permute(Valid_pixels,prmt_ordr);
     if ~isempty(opticelib)
         Ice_est = permute(Ice_est,    prmt_ordr);
     end
@@ -1005,8 +1010,8 @@ elseif nargout==1
                 ancillaries  = ancillaries(column_idxes);
             end
             out.ancillaries  = ancillaries;
-        case {'GPU_BATCH_2'}
-            X = permute(X(:,column_idxes,:),prmt_order);
+        case {'CPU_2','GPU_2','GPU_BATCH_2'}
+            X = permute(X(:,column_idxes,:),prmt_ordr);
             out.X = X;
         otherwise
             error('Undefined PROC_MODE=%s',PROC_MODE);
