@@ -98,7 +98,7 @@ logYifc_bprmvd = interp_nan_column(logYifc_bprmvd,logYifc_bprmvd_isnan,wvc_bprmv
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.8;
 
 %% initialization of logt_est
-lambda_a_1 = zeros(1,N_A1,precision);
+lambda_a_1 = zeros(N_A1,1,precision);
 lambda_tmp = lambda_a;
 % lambda_a_1(idxAlibstrt:end) = lambda_tmp;
 lambda_a_1(idxAlib) = lambda_tmp;
@@ -147,7 +147,7 @@ X = [Xlogtc_1d;X1(idxAlib,:)];
 D = [zeros(1,size(D1,2),precision); D1(idxAlibstrt:end,:)];
 C = C1;
 Z = Z1;
-lambda_a_2 = zeros(1,1+Nlib);
+lambda_a_2 = zeros(1+Nlib,1);
 
 rho = ones([1,Ny]);
 
