@@ -482,8 +482,8 @@ logt_est     = A(:,1,:);
 logYif_cor(logYif_isnan) = nan;
 
 if batch
-    [logYif_cor,logt_est,logAB,logBg,logYif_isnan,X,badspc]...
-        = gather(logYif_cor,logt_est,logAB,logBg,logYif_isnan,X,badspc);
+    [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc]...
+        = gather(logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc);
 else
 end
 

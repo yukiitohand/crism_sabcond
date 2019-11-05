@@ -403,14 +403,14 @@ fprintf('suffix will be \n"%s"\n',suffix);
 
 switch upper(opt_img)
     case 'IF'
-        basename_cr = [crism_obs.info.basenameIF suffix];
+        basename_cr = [crism_obs.info.basenameIF '_' suffix];
     case 'RA_IF'
-        basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
+        basename_cr = [crism_obs.info.basenameRA '_IF' '_' suffix];
     case {'TRRY','TRRB','TRRC'}
         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
         prop.version = opt_img(4);
         basenameTRRY = get_basenameOBS_fromProp(prop);
-        basename_cr = [basenameTRRY suffix];
+        basename_cr = [basenameTRRY '_' suffix];
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
