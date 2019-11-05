@@ -393,11 +393,7 @@ else
     save_dir = joinPath(save_pdir,crism_obs.info.dirname);
 end
 
-if isempty(additional_suffix)
-    suffix = ['_' mt];
-else
-    suffix = ['_' mt '_' additional_suffix];
-end
+suffix = const_suffix_v3(mt,additional_suffix);
 
 fprintf('suffix will be \n"%s"\n',suffix);
 
