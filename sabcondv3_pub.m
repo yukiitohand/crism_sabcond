@@ -783,7 +783,7 @@ fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
 fprintf(fid,'FFC_IF_COUNTER: %d\n',ffc_counter);
 fprintf(fid,'BANDS_OPT: %d\n',bands_opt);
 fprintf(fid,'LINES:'); fprintf(fid,' %d',line_idxes); fprintf(fid, '\n');
-fprintf(fid,'COLUMNS:'); fprintf(fid,' %d',Columns); fprintf(fid, '\n');
+fprintf(fid,'COLUMNS:'); fprintf(fid,' %d',column_idxes); fprintf(fid, '\n');
 fprintf(fid,'METHODTYPE: %s\n',mt);
 fprintf(fid,'OPTBP: %s\n',optBP);
 fprintf(fid,'VERBOSE: %d\n', verbose);
@@ -994,7 +994,7 @@ elseif nargout==1
     out.Valid_pixels = Valid_pixels;
     out.WA           = WA;
     out.lines        = line_idxes;
-    out.columns      = Columns;
+    out.columns      = column_idxes;
     out.bands        = bands;
     out.interleave_out     = interleave_out;
     out.subset_columns_out = subset_columns_out;
@@ -1007,7 +1007,7 @@ elseif nargout==1
             out.ancillaries  = ancillaries;
         case {'GPU_BATCH_2'}
             X = permute(X(:,column_idxes,:),prmt_order);
-            out.X            = X;
+            out.X = X;
         otherwise
             error('Undefined PROC_MODE=%s',PROC_MODE);
     end
