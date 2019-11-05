@@ -50,6 +50,8 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %           out.AB_est      = AB_est;
 %           out.Bg_est      = Bg_est;
 %           out.T_est       = T_est;
+%           out.Yif_isnan    = Yif_isnan;
+%           out.Valid_pixels = Valid_pixels;
 %           out.WA          = WA;
 %           out.lines       = line_idxes;
 %           out.columns     = Columns;
@@ -58,10 +60,9 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %           out.subset_columns_out = subset_columns_out;
 %       **ADDITIONAL FIELD**
 %        For PROC_MODE either of {'CPU_1','GPU_1'}
-%           out.Valid_pixels = Valid_pixels;
 %           out.ancillaries  = ancillaries;
 %        For PROC_MODE either of {'GPU_BATCH_1'}
-%           out.Yif_isnan    = Yif_isnan;
+%           
 %           out.X            = X;
 %
 % OPTIONAL Parameters 
@@ -985,19 +986,19 @@ elseif nargout==1
     out.Yif_cor_ori = Yif_cor_ori;
     out.AB_est      = AB_est;
     out.Bg_est      = Bg_est;
-    out.Yif_isnan    = Yif_isnan;
     if ~isempty(opticelib)
-        out.Ice_est     = Ice_est;
+        out.Ice_est = Ice_est;
     end
-    out.T_est       = T_est;
-    out.WA          = WA;
-    out.lines       = line_idxes;
-    out.columns     = Columns;
-    out.bands       = bands;
+    out.T_est        = T_est;
+    out.Yif_isnan    = Yif_isnan;
+    out.Valid_pixels = Valid_pixels;
+    out.WA           = WA;
+    out.lines        = line_idxes;
+    out.columns      = Columns;
+    out.bands        = bands;
     out.interleave_out     = interleave_out;
     out.subset_columns_out = subset_columns_out;
-    out.bands       = bands;
-    out.Valid_pixels = Valid_pixels;
+    
     switch upper(PROC_MODE)
         case {'CPU_1','GPU_1'}
             if subset_columns_out
