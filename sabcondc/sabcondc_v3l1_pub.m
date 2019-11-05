@@ -1,5 +1,5 @@
 function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,...
-    ancillary,rr_ori,vldpxl]...
+    ancillary,vldpxl]...
     = sabcondc_v3l1_pub( Alib,logYifc,wvc,logtc,varargin )
 % [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,...
 %    ancillary,rr_ori,vldpxl]...
@@ -34,7 +34,7 @@ else
     for i=1:2:(length(varargin)-1)
         switch upper(varargin{i})
             case 'AICELIB'
-                Aicelib = [];
+                Aicelib = varargin{i+1};
             case 'GP'
                 gp = varargin{i+1};
             case 'NITER'
@@ -288,16 +288,6 @@ logYifc_isnan(gp_bool,:) = logYifc_bprmvd_isnan;
 
 % 
 logBg = interp_nan_column(logBg,logYifc_isnan,wvc);
-
-% residual
-rr_ori = nan(B,Ny,precision);
-if Aice_notisempty
-    rr_ori(gp_bool,:) = logYifc_bprmvd_ori - logAB(gp_bool,:)...
-        - logBg(gp_bool,:) - A_bprmvd(:,1)*X(1,:) - logIce(gp_bool,:);
-else
-    rr_ori(gp_bool,:) = logYifc_bprmvd_ori - logAB(gp_bool,:)...
-        - logBg(gp_bool,:) - A_bprmvd(:,1)*X(1,:);
-end
 
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < th_badspc;
 

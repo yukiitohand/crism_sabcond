@@ -107,6 +107,10 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       the optional parameter 'COLUMNS'. This is not the interleave used 
 %       for saving processed images. 
 %       (default) false
+%   'ALIB_OUT': boolean,
+%       whether or not to out to include the libraries used for the
+%       processing.
+%       (default) false
 %
 %  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'OPT_IMG': string, {'IF','RA_IF','TRRY','TRRB','TRRC'}
@@ -193,7 +197,10 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %           2: Bad pixel detected during processing are exactly ignored
 %              during the processing.
 %       Currently, multiple GPU processing is not supported.
-%
+%   'BATCH_SIZE': integer
+%       column size for which processing is performed. Valid only if
+%       'GPU_BATCH_*' mode is selected.
+%       (default) 10
 
 global crism_env_vars
 
@@ -207,17 +214,18 @@ additional_suffix  = 'v1';
 interleave_out     = 'lsb';
 interleave_default = 'lsb';
 subset_columns_out = false;
+Alib_out           = false;
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
-opt_img     = 'TRRB';
-dir_yuk     = crism_env_vars.dir_YUK; % TRRY_PDIR
-ffc_counter = 1;
-bands_opt   = 4;
-line_idxes  = [];                     % LINES
-Columns     = [];
-mt          = 'sabcondpub_v1';        % METHODTYPE
-optBP       = 'pri';                  %{'pri','all','none'}
-verbose     = 0;
+opt_img      = 'TRRB';
+dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
+ffc_counter  = 1;
+bands_opt    = 4;
+line_idxes   = [];                     % LINES
+column_idxes = [];
+mt           = 'sabcondpub_v1';        % METHODTYPE
+optBP        = 'pri';                  %{'pri','all','none'}
+verbose      = 0;
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 t_mode = 2;
@@ -238,6 +246,7 @@ lambda_a = 0.01;
 % ## PROCESSING OPTIONS #--------------------------------------------------
 precision = 'double';
 PROC_MODE = 'CPU_1';
+n_batch   = 10;
 
 % ## ETCETERA #------------------------------------------------------------
 % gausssigma = 0.6;
@@ -265,6 +274,8 @@ else
                 interleave_out = varargin{i+1};
             case 'SUBSET_COLUMNS_OUT'
                 subset_columns_out = varargin{i+1};
+            case 'ALIB_OUT'
+                Alib_out = varargin{i+1};
                 
             % ## GENERAL SABCOND OPTIONS #---------------------------------
             case 'OPT_IMG'
@@ -278,7 +289,7 @@ else
             case {'LINES','LLS'}
                 line_idxes = varargin{i+1};
             case {'SAMPLES','COLUMNS','CLIST'}
-                Columns = varargin{i+1};
+                column_idxes = varargin{i+1};
             case 'METHODTYPE'
                 mt = varargin{i+1};
             case 'OPTBP'
@@ -317,7 +328,9 @@ else
                 precision = varargin{i+1};
             case 'PROC_MODE'
                 PROC_MODE = varargin{i+1};
-            
+            case 'BATCH_SIZE'
+                n_batch = varargin{i+1};
+                
             otherwise
                 error('Unrecognized option: %s',varargin{i});
         end
@@ -342,7 +355,8 @@ switch upper(PROC_MODE)
     otherwise
         error('Undefined PROC_MODE=%s',PROC_MODE);
 end
-% Check GPU
+
+% Check GPU ---------------------------------------------------------------
 if gpu
     if gpuDeviceCount==0
         error('No GPU is detected. Use CPU option');
@@ -516,9 +530,9 @@ if strcmpi(precision,'single')
 end
 
 % evaluate valid columns
-if isempty(Columns), Columns = 1:nCall; end
+if isempty(column_idxes), column_idxes = 1:nCall; end
 valid_columns = find(~all(isnan(WAb),1));
-Columns_valid = intersect(Columns,valid_columns);
+Columns_valid = intersect(column_idxes,valid_columns);
 if isempty(Columns_valid), fprintf(2,'Specified columns are invalid\n'); end
 
 logT_extrap = logT;
@@ -566,7 +580,9 @@ fprintf('Current time is %s.\n',tstart);
 
 switch upper(PROC_MODE)
     case {'CPU_1','GPU_1'}
+        %%
         Yif_cor = nan([nLall,nCall,nBall],precision);
+        Yif_isnan = nan([nLall,nCall,nBall],precision);
         T_est = nan([nBall,nCall],precision);
         Bg_est = nan([nLall,nCall,nBall],precision);
         AB_est = nan([nLall,nCall,nBall],precision);
@@ -579,13 +595,24 @@ switch upper(PROC_MODE)
             'gp_bool',cell(1,nCall));
         Yif_cor_ori = nan([nLall,nCall,nBall],precision);
         Valid_pixels = false([nLall,nCall]);
+        
         for c = Columns_valid
             tic;
-            [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
+            if Alib_out
+                [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
                 bands_opt,WAb(:,c),cntRmvl);
+            else
+                [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
+                bands_opt,WAb(:,c),cntRmvl);
+            end
             if ~isempty(opticelib)
-                [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
-                    bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                if Alib_out
+                    [Aicelib,infoAiceall,valid_idx_ice] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
+                        bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                else
+                    [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
+                        bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                end
             else
                 Aicelib = [];
             end
@@ -593,7 +620,7 @@ switch upper(PROC_MODE)
                 Alib = single(Alib); Aicelib = single(Aicelib);
             end
 
-            [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,~,ancillary,~,vldpxl_c]...
+            [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,ancillary,vldpxl_c]...
                 = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WAb(:,c),logT_extrap(:,:,c),...
                   'GP',GP(:,:,c),...
                   'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
@@ -606,11 +633,22 @@ switch upper(PROC_MODE)
             T_est(bBool,c) = logt_est;
             Bg_est(lBool,c,bBool) = reshape(logBg',[nL,1,nB]);
             AB_est(lBool,c,bBool) = reshape(logAB',[nL,1,nB]);
+            Yif_isnan(lBool,c,bBool) = reshape(logYifc_isnan',[nL,1,nB]);
             if ~isempty(opticelib)
                 Ice_est(lBool,c,bBool) = reshape(logIce',[nL,1,nB]);
             end
             ancillaries(c) = ancillary;
             Valid_pixels(lBool,c) = vldpxl_c';
+            
+            if Alib_out
+                ancillaries(c).Alib = Alib;
+                ancillaries(c).infoA = infoAall(valid_idx);
+                if ~isempty(opticelib)
+                    ancillaries(c).Aicelib = Aicelib;
+                    ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
+                end
+            end
+            
 
             toc;
         end
@@ -621,13 +659,15 @@ switch upper(PROC_MODE)
         if ~isempty(opticelib)
             Ice_est = exp(Ice_est);
         end
-        
+    
     case 'GPU_BATCH_2'
+        %%
         Yif_cor = nan([nBall,nLall,nCall],precision);
         Yif_isnan = nan([nBall,nLall,nCall]);
         T_est = nan([nBall,1,nCall],precision);
         Bg_est = nan([nBall,nLall,nCall],precision);
         AB_est = nan([nBall,nLall,nCall],precision);
+        badspcs = true([1,nLall,nCall],precision);
         if ~isempty(opticelib)
             Ice_est = nan([nBall,nLall,nCall],precision);
         end
@@ -665,7 +705,7 @@ switch upper(PROC_MODE)
             tic;
             [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
                 AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
-                Yif_isnan(bBool,lBool,Columns),Xc]...
+                Yif_isnan(bBool,lBool,Columns),Xc,badspcs(1,lBool,Columns)]...
             = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
                       logT_extrap(:,:,Columns),...
                       BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
@@ -689,6 +729,8 @@ switch upper(PROC_MODE)
         end
         T_est  = squeeze(T_est);
         X = permute(X,[2,3,1]);
+        badspcs = squeeze(badspcs);
+        Valid_pixels = ~badspcs;
         
         Yif_cor = exp(Yif_cor); T_est = exp(T_est);
         Bg_est = exp(Bg_est); AB_est = exp(AB_est); 
@@ -732,14 +774,15 @@ fprintf(fid,'SKIP_IFEXIST: %d\n',skip_ifexist);
 fprintf(fid,'ADDITIONAL_SUFFIX: %s\n',additional_suffix);
 fprintf(fid,'INTERLEAVE_OUT: %s\n',interleave_out);
 fprintf(fid,'SUBSET_COLUMNS_OUT: %d\n', subset_columns_out);
+fprintf(fid,'ALIB_OUT: %d\n',Alib_out);
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 fprintf(fid,'OPT_IMG: %s\n',opt_img);
 fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
 fprintf(fid,'FFC_IF_COUNTER: %d\n',ffc_counter);
 fprintf(fid,'BANDS_OPT: %d\n',bands_opt);
-fprintf(fid,'LINES:'); fprintf(fid,' %d',line_idxes); fprintf('\n');
-fprintf(fid,'COLUMNS:'); fprintf(fid,' %d',Columns); fprintf('\n');
+fprintf(fid,'LINES:'); fprintf(fid,' %d',line_idxes); fprintf(fid, '\n');
+fprintf(fid,'COLUMNS:'); fprintf(fid,' %d',Columns); fprintf(fid, '\n');
 fprintf(fid,'METHODTYPE: %s\n',mt);
 fprintf(fid,'OPTBP: %s\n',optBP);
 fprintf(fid,'VERBOSE: %d\n', verbose);
@@ -758,7 +801,7 @@ fprintf(fid,'OPT_ICELIB: %d\n',opticelib);
 
 % ## SABCONDC OPTIONS #----------------------------------------------------
 fprintf(fid,'NITER: %d\n',nIter);
-fprintf(fid,'LAMBDA_A: %f\n',lambda_a); fprintf('\n');
+fprintf(fid,'LAMBDA_A:'); fprintf(fid,' %f',lambda_a); fprintf(fid,'\n');
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 fprintf(fid,'PRECISION: %s\n',precision);
@@ -767,7 +810,9 @@ fprintf(fid,'PROC_MODE: %s\n',PROC_MODE);
 % ## ETCETERA #------------------------------------------------------------
 % fprintf(fid,'GAUSSSIGMA: %f\n',gausssigma);
 
-fclose(fid);
+if fid>1
+    fclose(fid);
+end
 
 %%
 if save_file
@@ -843,9 +888,9 @@ end
 % performing interpolation
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Yif_cor_nr = Yif_cor;
-img_modell1 = AB_est .* Bg_est;
+Yif_mdl = AB_est .* Bg_est;
 nan_cells = isnan(Yif_cor);
-Yif_cor_nr(nan_cells) = img_modell1(nan_cells);
+Yif_cor_nr(nan_cells) = Yif_mdl(nan_cells);
 
 Valid_pixels_good = double(Valid_pixels);
 Valid_pixels_good(Valid_pixels==0) = nan;
@@ -900,7 +945,6 @@ fprintf('Process completed!\n');
 
 if save_file, diary off; end
 
-
 %% Construct output
 out = [];
 if nargout==0
@@ -909,15 +953,17 @@ elseif nargout==1
     WA = squeeze(WAdata.img(:,:,:))';
     % take the subset of the columns
     if subset_columns_out
-        Yif_cor     = Yif_cor(:,Columns,:);
-        Yif_cor_nr  = Yif_cor_nr(:,Columns,:);
-        Yif_cor_ori = Yif_cor_ori(:,Columns,:);
-        AB_est      = AB_est(:,Columns,:);
-        Bg_est      = Bg_est(:,Columns,:);
-        WA          = WA(:,Columns);
-        T_est       = T_est(:,Columns);
+        Yif_cor     = Yif_cor(:,column_idxes,:);
+        Yif_cor_nr  = Yif_cor_nr(:,column_idxes,:);
+        Yif_cor_ori = Yif_cor_ori(:,column_idxes,:);
+        Yif_isnan   = Yif_isnan(:,column_idxes,:);
+        AB_est      = AB_est(:,column_idxes,:);
+        Bg_est      = Bg_est(:,column_idxes,:);
+        WA          = WA(:,column_idxes);
+        T_est       = T_est(:,column_idxes);
+        Valid_pixels= Valid_pixels(:,column_idxes);
         if ~isempty(opticelib)
-            Ice_est = Ice_est(:,Columns,:);
+            Ice_est = Ice_est(:,column_idxes,:);
         end
     end
     % Permute the output.
@@ -927,6 +973,7 @@ elseif nargout==1
     Yif_cor     = permute(Yif_cor,    prmt_ordr);
     Yif_cor_nr  = permute(Yif_cor_nr, prmt_ordr);
     Yif_cor_ori = permute(Yif_cor_ori,prmt_ordr);
+    Yif_isnan   = permute(Yif_isnan,  prmt_ordr);
     AB_est      = permute(AB_est,     prmt_ordr);
     Bg_est      = permute(Bg_est,     prmt_ordr);
     if ~isempty(opticelib)
@@ -938,6 +985,7 @@ elseif nargout==1
     out.Yif_cor_ori = Yif_cor_ori;
     out.AB_est      = AB_est;
     out.Bg_est      = Bg_est;
+    out.Yif_isnan    = Yif_isnan;
     if ~isempty(opticelib)
         out.Ice_est     = Ice_est;
     end
@@ -949,17 +997,15 @@ elseif nargout==1
     out.interleave_out     = interleave_out;
     out.subset_columns_out = subset_columns_out;
     out.bands       = bands;
+    out.Valid_pixels = Valid_pixels;
     switch upper(PROC_MODE)
         case {'CPU_1','GPU_1'}
             if subset_columns_out
-                Valid_pixels = Valid_pixels(:,Columns);
-                ancillaries  = ancillaries(Columns);
+                ancillaries  = ancillaries(column_idxes);
             end
-            out.Valid_pixels = Valid_pixels;
             out.ancillaries  = ancillaries;
         case {'GPU_BATCH_2'}
-             X = permute(X(:,Columns,:),prmt_order);
-            out.Yif_isnan    = Yif_isnan;
+            X = permute(X(:,column_idxes,:),prmt_order);
             out.X            = X;
         otherwise
             error('Undefined PROC_MODE=%s',PROC_MODE);

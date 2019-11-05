@@ -1,4 +1,4 @@
-function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X] = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
+function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc] = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
 % 
 % INPUTS
 %   logYif
@@ -285,7 +285,7 @@ logt_est     = A(:,1,:);
 logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:)) - logIce;
 logYif_cor(logYif_isnan) = nan;
 
-[logYif_cor,logt_est,logAB,logBg,logYif_isnan,X] = gather(logYif_cor,logt_est,logAB,logBg,logYif_isnan,X);
+[logYif_cor,logt_est,logAB,logBg,logYif_isnan,X,badspc] = gather(logYif_cor,logt_est,logAB,logBg,logYif_isnan,X,badspc);
 
 
 end

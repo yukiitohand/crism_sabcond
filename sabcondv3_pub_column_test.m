@@ -17,8 +17,10 @@ function [out] = sabcondv3_pub_column_test(obs_id,c,varargin)
 %       'INTERLEAVE_OUT'    : 'bls'
 %       'SUBSET_COLUMNS_OUT': true
 %       'SAVE_FILE'         : false
+%       'ALIB_OUT'          : true
 
 [out] = sabcondv3_pub(obs_id,'INTERLEAVE_OUT','bls',...
-    'SUBSET_COLUMNS_OUT',1,'SAVE_FILE',false, varargin{:},'Columns',c);
+    'SUBSET_COLUMNS_OUT',1,'SAVE_FILE',false, 'Alib_out', true,...
+    varargin{:},'Columns',c);
 
 end
