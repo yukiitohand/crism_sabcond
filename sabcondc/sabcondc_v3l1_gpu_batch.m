@@ -261,7 +261,7 @@ lambda_c = zeros(B,L,S,precision,gpu_varargin{:});
 lambda_a_2 = zeros(Nlib+Nice+Ntc,L,S,precision,gpu_varargin{:});
 lambda_r = ones(B,L,S,precision,gpu_varargin{:});
 
-lambda_a_2(:,(1+Ntc):(Ntc+Nice)) = lambda_a_ice;
+lambda_a_2(:,(1+Ntc):(Ntc+Nice),:) = lambda_a_ice;
 lambda_a_2(:,(1+Ntc+Nice):end,:) = lambda_a;
 
 % 
@@ -343,11 +343,11 @@ resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
 % main loop
 %-------------------------------------------------------------------------%
 A = cat(2,logt_est,Alib);
-X = cat(1,Xtc,X(1+Ntc:end,:,:));
-D = cat(1,zeros(1,L,S,precision,gpu_varargin{:}),D(1+Ntc:end,:,:));
+X = cat(1,Xtc,X((1+Ntc):end,:,:));
+D = cat(1,zeros(1,L,S,precision,gpu_varargin{:}),D((1+Ntc):end,:,:));
 lambda_a_2 = ones(1+Nice+Nlib,L,S,precision,gpu_varargin{:});
 lambda_a_2(1,:,:) = 0;
-lambda_a_2(:,2:(Nice+1)) = lambda_a_ice;
+lambda_a_2(:,2:(Nice+1),:) = lambda_a_ice;
 lambda_a_2(:,(2+Nice):end,:) = lambda_a;
 % rho = ones([1,L,S],precision,'gpuArray');
 Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov(Ntc+1:Ntc+Nlib+Nc+B,:,:));
@@ -467,11 +467,6 @@ if batch
     logBg        = pagefun(@mtimes,C,Z);
     logIce       = pagefun(@mtimes,Aicelib,X(2:(Nice+1),:,:));
     logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:)) - logIce;
-%     if ~isempty(Aicelib)
-%         
-%     else
-%         logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:));
-%     end
 else
     logAB = Alib*X((2+Nice):end,:);
     logBg = C*Z;
