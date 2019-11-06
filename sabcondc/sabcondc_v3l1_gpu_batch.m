@@ -343,7 +343,7 @@ resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
 %-------------------------------------------------------------------------%
 % main loop
 %-------------------------------------------------------------------------%
-A = cat(2,logt_est,Alib);
+A = cat(2,logt_est,Aicelib,Alib);
 X = cat(1,Xtc,X((1+Ntc):end,:,:));
 D = cat(1,zeros(1,L,S,precision,gpu_varargin{:}),D((1+Ntc):end,:,:));
 lambda_a_2 = ones(1+Nice+Nlib,L,S,precision,gpu_varargin{:});
@@ -351,7 +351,7 @@ lambda_a_2(1,:,:) = 0;
 lambda_a_2(2:(Nice+1),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
 lambda_a_2((2+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 % rho = ones([1,L,S],precision,'gpuArray');
-Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(Ntc+Nlib+Nc+B),:,:));
+Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(Ntc+Nice+Nlib+Nc+B),:,:));
 % lambda_tmp = lambda_a;
 % always update lambda_tmp
 % lambda_tmp = lambda_tmp .* resNewNrm ./ resNrm;

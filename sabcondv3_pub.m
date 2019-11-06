@@ -684,7 +684,7 @@ switch upper(PROC_MODE)
                 else
                     Aicelib = [];
                 end
-                NA = size(Alib,2);
+                NA = size(Alib,2) + size(Aicelib,2);
                 if i==1
                     Alibs = Alib;
                     Aicelibs = Aicelib;
