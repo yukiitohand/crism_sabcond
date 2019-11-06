@@ -259,11 +259,6 @@ X = [Xlogtc_1d;X1(or(idxAice,idxAlib),:)];
 D = [zeros(1,size(D1,2),precision); D1(idxAicestrt:end,:)];
 C = C1;
 Z = Z1;
-<<<<<<< HEAD
-lambda_a_2 = zeros(1+Nlib,1);
-=======
-
->>>>>>> pub-ice-addition
 
 rho = ones([1,Ny]);
 
