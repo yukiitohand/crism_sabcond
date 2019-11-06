@@ -57,6 +57,7 @@ nIter = 20;
 cntRmvl = 1;
 cntRmvl_ice = 0;
 additional_suffix = '';
+suffix_version = 2;
 
 if isempty(TRRIFdata.basenamesCDR)
     TRRIFdata.load_basenamesCDR();
@@ -94,14 +95,22 @@ else
                 additional_suffix = varargin{i+1};
             case 'ALIBDIR'
                 Alibdir = varargin{i+1};
+            case 'SUFFIX_VERSION'
+                suffix_version = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
         end
     end
 end
-
-[suffix] = const_suffix_v2(mt,cntRmvl,libprefix,optInterpid,bands_opt,nIter,additional_suffix);
+switch suffix_version
+    case 2
+        [suffix] = const_suffix_v2(mt,cntRmvl,libprefix,optInterpid,bands_opt,nIter,additional_suffix);
+    case 3
+        [suffix] = const_suffix_v3(mt,additional_suffix);
+    otherwise
+        error('Undefined suffix version');
+end
 [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib] = decompose_libprefix(libprefix);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 libprefix_Alib = const_libprefix(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib);
