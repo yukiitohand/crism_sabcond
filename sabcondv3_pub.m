@@ -58,12 +58,9 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %           out.bands       = bands;
 %           out.interleave_out     = interleave_out;
 %           out.subset_columns_out = subset_columns_out;
-%       **ADDITIONAL FIELD**
-%        For PROC_MODE either of {'CPU_1','GPU_1'}
-%           out.ancillaries  = ancillaries;
-%        For PROC_MODE either of {'GPU_BATCH_1'}
-%           
-%           out.X            = X;
+%           out.GP = GP;
+%           out.BP = BP;
+%           out.ancillaries = ancillaries;
 %
 % OPTIONAL Parameters 
 %  ## I/O OPTIONS  #-------------------------------------------------------
@@ -489,23 +486,30 @@ fprintf('finish loading Image\n');
 
 %%
 % read bad pixel
-[BPdata1,BPdata2,BPdata_post] = load_BPdataSC_fromDF(...
-    TRRIFdata,DFdata1.basename,DFdata2.basename);
+if isempty(DFdata2)
+    [BPdata1,BPdata2,BPdata_post] = load_BPdataSC_fromDF(...
+        TRRIFdata,DFdata1.basename,[]);
+else
+    [BPdata1,BPdata2,BPdata_post] = load_BPdataSC_fromDF(...
+        TRRIFdata,DFdata1.basename,DFdata2.basename);
+end
 switch lower(optBP)
     case 'pri'
-        [BP_pri1nan] = formatBPpri1nan(BPdata1,BPdata2,'band_inverse',true);
-        [GP_pri] = convertBP1nan2GP1nan(BP_pri1nan);
-        GP = permute(GP_pri(bands,:,:),[1,3,2]);
+        [BP1nan] = formatBPpri1nan(BPdata1,BPdata2,'band_inverse',true);
+        [GP1nan] = convertBP1nan2GP1nan(BP1nan);
+        GP1nan = permute(GP1nan(bands,:,:),[1,3,2]);
     case 'all'
-        [BP_post1nan] = formatBP1nan(BPdata_post,'band_inverse',true);
-        [GP_all] = convertBP1nan2GP1nan(BP_post1nan);
-        GP = permute(GP_all(bands,:,:),[1,3,2]);
+        [BP1nan] = formatBP1nan(BPdata_post,'band_inverse',true);
+        [GP1nan] = convertBP1nan2GP1nan(BP1nan);
+        GP1nan = permute(GP1nan(bands,:,:),[1,3,2]);
     case 'none'
-        GP = true(nB,1,nCall);
+        GP1nan = double(true(nB,1,nCall));
+        BP1nan = nan(nB,1,nCall);
     otherwise 
         error('optBP=%s is not defined.',optBP);
 end
-BP = isnan(GP);
+
+BP = (BP1nan==1); GP = (GP1nan==1);
 
 %% read ADR transmission data
 switch t_mode
@@ -523,7 +527,7 @@ T = permute(T,[3,1,2]); logT = log(T);
 fprintf('finish loading ADR\n');
 %%
 % clear variables no longer used
-clear Yif T at_trans BPdata1 BPdata2 BPdata_post BP_pri1nan BP_pri
+clear Yif T at_trans BPdata1 BPdata2 BPdata_post
 
 %% main loop
 if strcmpi(precision,'single')
@@ -593,8 +597,10 @@ switch upper(PROC_MODE)
         if ~isempty(opticelib)
             Ice_est = nan([nLall,nCall,nBall],precision);
         end
-        ancillaries = struct('Xt',cell(1,nCall),'Xlib',cell(1,nCall),...
-                             'Xice',cell(1,nCall),'gp_bool',cell(1,nCall));
+        ancillaries = struct('Xt',cell(nCall,1),'Xlib',cell(nCall,1),...
+                             'Xice',cell(nCall,1),...
+                             'Alib',cell(nCall,1),'Aicelib',cell(nCall,1),...
+                             'infoAlib',cell(nCall,1),'infoAicelib',cel(nCall,1));
         Yif_cor_ori = nan([nLall,nCall,nBall],precision);
         Valid_pixels = false([nLall,nCall]);
         
@@ -603,6 +609,8 @@ switch upper(PROC_MODE)
             if Alib_out
                 [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
                 bands_opt,WAb(:,c),cntRmvl);
+                ancillaries(c).Alib = Alib;
+                ancillaries(c).infoAlib = infoAall(valid_idx);
             else
                 [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
                 bands_opt,WAb(:,c),cntRmvl);
@@ -611,23 +619,21 @@ switch upper(PROC_MODE)
                 if Alib_out
                     [Aicelib,infoAiceall,valid_idx_ice] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
                         bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                    ancillaries(c).Aicelib = Aicelib;
+                    ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
                 else
                     [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
                         bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                 end
             else
                 Aicelib = [];
-                if Alib_out
-                    infoAiceall = []; valid_idx_ice = [];
-                end
             end
             if strcmpi(precision,'single')
                 Alib = single(Alib); Aicelib = single(Aicelib);
             end
 
             [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,ancillary,vldpxl_c]...
-                = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WAb(:,c),logT_extrap(:,:,c),...
-                  'GP',GP(:,:,c),...
+                = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WAb(:,c),logT_extrap(:,:,c),GP(:,:,c),...
                   'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
                   'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
                   'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
@@ -644,15 +650,6 @@ switch upper(PROC_MODE)
             end
             ancillaries(c) = ancillary;
             Valid_pixels(lBool,c) = vldpxl_c';
-            
-            if Alib_out
-                ancillaries(c).Alib = Alib;
-                ancillaries(c).infoAlib = infoAall(valid_idx);
-                if ~isempty(opticelib)
-                    ancillaries(c).Aicelib = Aicelib;
-                    ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
-                end
-            end
             
 
             toc;
@@ -676,7 +673,7 @@ switch upper(PROC_MODE)
         Ice_est = nan([nBall,nLall,nCall],precision);
         Yif_cor_ori = nan([nBall,nLall,nCall],precision);
         ancillaries = struct('Xt',cell(nCall,1),'Xlib',cell(nCall,1),...
-                             'Xice',cell(nCall,1),'gp_bool',cell(nCall,1),...
+                             'Xice',cell(nCall,1),...
                              'Alib',cell(nCall,1),'Aicelib',cell(nCall,1),...
                              'infoAlib',cell(nCall,1),'infoAicelib',cel(nCall,1));
         n_batch = ceil(length(Columns_valid)/batch_size);
@@ -764,9 +761,6 @@ switch upper(PROC_MODE)
         AB_est = permute(AB_est,[2,3,1]);
         Ice_est = permute(Ice_est,[2,3,1]);
         T_est  = squeeze(T_est);
-        Xt = permute(Xt,[2,3,1]);
-        Xlib = permute(Xlib,[2,3,1]);
-        Xice = permute(Xice,[2,3,1]);
         badspcs = squeeze(badspcs);
         Valid_pixels = ~badspcs;
     
@@ -778,6 +772,9 @@ switch upper(PROC_MODE)
         error('Undefined PROC_MODE=%s',PROC_MODE);
         
 end
+
+BP = permute(BP,[2,3,1]);
+GP = permute(GP,[2,3,1]);
 
 tend = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
 fprintf('finish procceing, current time is %s.\n',tend);
@@ -887,14 +884,8 @@ if save_file
     wa = WAdata.img;
     wa = squeeze(wa)';
     fprintf('Saving %s ...\n',fname_supple);
-    switch PROC_MODE
-        case {'CPU_1','GPU_1'}
-            save(fname_supple,'wa','bands','line_idxes','T_est',...
-                'ancillaries','Valid_pixels');
-        case {'GPU_BATCH_2'}
-            save(fname_supple,'wa','bands','line_idxes','T_est',...
-                'Xt','Xlib','Xice','Yif_isnan');
-    end
+    save(fname_supple,'wa','bands','line_idxes','T_est','BP','GP',...
+        'ancillaries','Valid_pixels');
     fprintf('Done\n');
 
     basename_Bg = [basename_cr '_Bg'];
@@ -1001,6 +992,8 @@ elseif nargout==1
         WA          = WA(:,column_idxes);
         T_est       = T_est(:,column_idxes);
         Valid_pixels= Valid_pixels(:,column_idxes);
+        GP = GP(:,column_idxes,:);
+        BP = BP(:,column_idxes,:);
         if ~isempty(opticelib)
             Ice_est = Ice_est(:,column_idxes,:);
         end
@@ -1016,6 +1009,8 @@ elseif nargout==1
     AB_est      = permute(AB_est,     prmt_ordr);
     Bg_est      = permute(Bg_est,     prmt_ordr);
     Valid_pixels= permute(Valid_pixels,prmt_ordr);
+    GP = permute(GP,prmt_ordr);
+    BP = permute(BP,prmt_ordr);
     if ~isempty(opticelib)
         Ice_est = permute(Ice_est,    prmt_ordr);
     end
@@ -1037,6 +1032,8 @@ elseif nargout==1
     out.bands        = bands;
     out.interleave_out     = interleave_out;
     out.subset_columns_out = subset_columns_out;
+    out.GP = GP;
+    out.BP = BP;
     
     if subset_columns_out
         ancillaries  = ancillaries(column_idxes);
