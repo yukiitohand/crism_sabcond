@@ -207,12 +207,12 @@ logYifc_bprmvd = interp_nan_column(logYifc_bprmvd,logYifc_bprmvd_isnan,wvc_bprmv
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < 0.5;
 
 %% initialization of logt_est
-lambda_a_1 = zeros(N_A1,1,precision);
+lambda_a_1 = zeros(N_A1,Ny,precision);
 lambda_tmp = lambda_a;
 lambda_tmp_ice = lambda_a_ice;
 % lambda_a_1(idxAlibstrt:end) = lambda_tmp;
-lambda_a_1(idxAlib) = lambda_tmp;
-lambda_a_1(idxAice) = lambda_tmp_ice;
+lambda_a_1(idxAlib,:) = lambda_tmp.*ones(Nlib,Ny,precision);
+lambda_a_1(idxAice,:) = lambda_tmp_ice.*ones(Nice,Ny,precision);
 
 X1 = nan(N_A1,Ny,precision); Z1 = nan(B_bprmvd,Ny,precision); 
 D1 = nan(N_A1+B_bprmvd*2,Ny,precision);
@@ -269,15 +269,15 @@ idxAice = false(1,N_A); idxAice(2:(Nice+1)) = true;
 idxAlib = false(1,N_A); idxAlib((Nice+2):end) = true;
 
 % always update lambda_tmp
-lambda_a_2 = zeros(N_A,1);
+lambda_a_2 = zeros(N_A,Ny,precision);
 lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
 lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
 
 for j=2:nIter+1
     % lambda_a_2(2:end) = lambda_tmp;   
     % rr = logYifc_bprmvd - A_bprmvd*X - C*Z;
-    lambda_a_2(idxAlib) = lambda_tmp;
-    lambda_a_2(idxAice) = lambda_tmp_ice;
+    lambda_a_2(idxAlib,:) = lambda_tmp.*ones(Nlib,Ny,precision);
+    lambda_a_2(idxAice,:) = lambda_tmp_ice.*ones(Nice,Ny,precision);
     if j==2
         [ X(:,vldpxl),Z(:,vldpxl),C,~,D(:,vldpxl),rho(:,vldpxl),Rhov ]...
             = huwacbl1_admm_gat_a(A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
