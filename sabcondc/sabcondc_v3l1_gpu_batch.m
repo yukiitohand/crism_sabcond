@@ -136,7 +136,7 @@ lambda_c = zeros(B,L,S,precision,'gpuArray');
 lambda_a_2 = zeros(Nlib+Ntc,L,S,precision,'gpuArray');
 lambda_r = ones(B,L,S,precision,'gpuArray');
 
-lambda_a_2(:,1+Ntc:end,:) = lambda_a;
+lambda_a_2(1+Ntc:end,:,:) = lambda_a;
 
 % 
 lambda_c(logYif_isnan) = inf;
