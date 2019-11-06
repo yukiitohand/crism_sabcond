@@ -231,7 +231,7 @@ end
 %-------------------------------------------------------------------------%
 % initialization using the matrix logT
 %-------------------------------------------------------------------------%
-A = cat(2,logT,Alib);
+A = cat(2,logT,Aicelib,Alib);
 % compute concave basese beforehand
 % C = concaveOperator(WA);
 % Dinv = C \ eye(B);
@@ -261,8 +261,8 @@ lambda_c = zeros(B,L,S,precision,gpu_varargin{:});
 lambda_a_2 = zeros(Nlib+Nice+Ntc,L,S,precision,gpu_varargin{:});
 lambda_r = ones(B,L,S,precision,gpu_varargin{:});
 
-lambda_a_2(:,(1+Ntc):(Ntc+Nice),:) = lambda_a_ice;
-lambda_a_2(:,(1+Ntc+Nice):end,:) = lambda_a;
+lambda_a_2((1+Ntc):(Ntc+Nice),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
+lambda_a_2((1+Ntc+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 
 % 
 lambda_c(logYif_isnan) = inf;
@@ -347,10 +347,10 @@ X = cat(1,Xtc,X((1+Ntc):end,:,:));
 D = cat(1,zeros(1,L,S,precision,gpu_varargin{:}),D((1+Ntc):end,:,:));
 lambda_a_2 = ones(1+Nice+Nlib,L,S,precision,gpu_varargin{:});
 lambda_a_2(1,:,:) = 0;
-lambda_a_2(:,2:(Nice+1),:) = lambda_a_ice;
-lambda_a_2(:,(2+Nice):end,:) = lambda_a;
+lambda_a_2(2:(Nice+1),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
+lambda_a_2((2+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 % rho = ones([1,L,S],precision,'gpuArray');
-Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov(Ntc+1:Ntc+Nlib+Nc+B,:,:));
+Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(Ntc+Nlib+Nc+B),:,:));
 % lambda_tmp = lambda_a;
 % always update lambda_tmp
 % lambda_tmp = lambda_tmp .* resNewNrm ./ resNrm;
@@ -416,7 +416,7 @@ for n=2:nIter
         RR  = RR + A(:,1)*X(1,:);
     end
     if batch
-        [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val,Kcond]...
+        [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
            = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...% 'rho',rho_lad,'Rhov',Rhov_lad,...
                 'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
                 'verbose',verbose_lad,'precision',precision,'Kcond',Kcond);
