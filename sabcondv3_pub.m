@@ -145,6 +145,9 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       (default) 'pri'
 %   'VERBOSE': integer, {0,1,2}
 %       option for how much information is displayed.
+%   'COLUMN_SKIP: integer
+%       the stride for which processing columns will be skipped.
+%       (default) 1
 %
 %  ## TRANSMISSION SPECTRUM OPTIONS #--------------------------------------
 %    'T_MODE': integer
@@ -227,6 +230,7 @@ column_idxes = [];
 mt           = 'sabcondpub_v1';        % METHODTYPE
 optBP        = 'pri';                  %{'pri','all','none'}
 verbose      = 0;
+column_skip  = 1;
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 t_mode = 2;
@@ -297,6 +301,8 @@ else
                 optBP = varargin{i+1};
             case 'VERBOSE'
                 verbose = varargin{i+1};
+            case 'COLUMN_SKIP'
+                column_skip = varargin{i+1};
                 
             % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------
             case 'T_MODE'
@@ -528,6 +534,7 @@ end
 
 % evaluate valid columns
 if isempty(column_idxes), column_idxes = 1:nCall; end
+column_idxes = column_idxes(1:column_skip:length(column_idxes));
 valid_columns = find(~all(isnan(WAb),1));
 Columns_valid = intersect(column_idxes,valid_columns);
 if isempty(Columns_valid), fprintf(2,'Specified columns are invalid\n'); end
@@ -586,7 +593,8 @@ switch upper(PROC_MODE)
         if ~isempty(opticelib)
             Ice_est = nan([nLall,nCall,nBall],precision);
         end
-        ancillaries = struct('X',cell(1,nCall),'gp_bool',cell(1,nCall));
+        ancillaries = struct('Xt',cell(1,nCall),'Xlib',cell(1,nCall),...
+                             'Xice',cell(1,nCall),'gp_bool',cell(1,nCall));
         Yif_cor_ori = nan([nLall,nCall,nBall],precision);
         Valid_pixels = false([nLall,nCall]);
         
@@ -609,6 +617,9 @@ switch upper(PROC_MODE)
                 end
             else
                 Aicelib = [];
+                if Alib_out
+                    infoAiceall = []; valid_idx_ice = [];
+                end
             end
             if strcmpi(precision,'single')
                 Alib = single(Alib); Aicelib = single(Aicelib);
@@ -636,7 +647,7 @@ switch upper(PROC_MODE)
             
             if Alib_out
                 ancillaries(c).Alib = Alib;
-                ancillaries(c).infoA = infoAall(valid_idx);
+                ancillaries(c).infoAlib = infoAall(valid_idx);
                 if ~isempty(opticelib)
                     ancillaries(c).Aicelib = Aicelib;
                     ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
@@ -664,8 +675,10 @@ switch upper(PROC_MODE)
         badspcs = true([1,nLall,nCall]);
         Ice_est = nan([nBall,nLall,nCall],precision);
         Yif_cor_ori = nan([nBall,nLall,nCall],precision);
-        X = [];
-        
+        ancillaries = struct('Xt',cell(nCall,1),'Xlib',cell(nCall,1),...
+                             'Xice',cell(nCall,1),'gp_bool',cell(nCall,1),...
+                             'Alib',cell(nCall,1),'Aicelib',cell(nCall,1),...
+                             'infoAlib',cell(nCall,1),'infoAicelib',cel(nCall,1));
         n_batch = ceil(length(Columns_valid)/batch_size);
         
         for ni = 1:n_batch
@@ -676,15 +689,32 @@ switch upper(PROC_MODE)
             end
             for i = 1:length(Columns)
                 c = Columns(i);
-                [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
-                    bands_opt,WAb(:,c),cntRmvl);
+                if Alib_out && (ni==1) && (i==1)
+                    [Alib,infoAall,valid_idx] = loadlibsc_v2(...
+                        optLibs,basenameWA,optInterpid,c,...
+                        bands_opt,WAb(:,c),cntRmvl);
+                    ancillaries(c).Alib     = Alib;
+                    ancillaries(c).infoAlib = infoAall(valid_idx);
+                else
+                    [Alib] = loadlibsc_v2(...
+                        optLibs,basenameWA,optInterpid,c,...
+                        bands_opt,WAb(:,c),cntRmvl);
+                end
                 if ~isempty(opticelib)
-                [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
-                    bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                    if Alib_out
+                        [Aicelib,infoAiceall,valid_idx_ice]...
+                            = loadlibc_crism_icelib(opticelib,basenameWA,c,...
+                            bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                        ancillaries(c).Aicelib     = Aicelib;
+                        ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
+                    else
+                        [Aicelib] = loadlibc_crism_icelib(...
+                            opticelib,basenameWA,c,...
+                            bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                    end
                 else
                     Aicelib = [];
                 end
-                NA = size(Alib,2) + size(Aicelib,2);
                 if i==1
                     Alibs = Alib;
                     Aicelibs = Aicelib;
@@ -699,7 +729,7 @@ switch upper(PROC_MODE)
             tic;
             [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
                 AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
-                Yif_isnan(bBool,lBool,Columns),Xc,badspcs(1,lBool,Columns)]...
+                Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns)]...
             = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
                       logT_extrap(:,:,Columns),...
                       BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
@@ -711,18 +741,21 @@ switch upper(PROC_MODE)
                 case {'GPU_BATCH_2'}
                 Yif_cor_ori(bBool,lBool,Columns)...
                     = logYif(:,:,Columns) ...
-                    - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xc(1,:,:))))...
+                    - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xt_c)))...
                     -Ice_est(bBool,lBool,Columns);
                 otherwise
                     Yif_cor_ori(bBool,lBool,Columns) ...
-                    = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xc(1,:,:)...
+                    = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xtc...
                       -Ice_est(bBool,lBool,Columns);
             end
-            if ni==1
-                X = nan(NA+1,nLall,nCall);
-            end
-            X(:,lBool,Columns) = Xc;
-            toc;
+            
+            Xt_c_cell   = squeeze(num2cell(Xt_c,[1,2]));
+            Xlib_c_cell = squeeze(num2cell(Xlib_c,[1,2]));
+            Xice_c_cell = squeeze(num2cell(Xice_c,[1,2]));
+            [ancillaries(Columns).Xt] = Xt_c_cell{:};
+            [ancillaries(Columns).Xlib] = Xlib_c_cell{:};
+            [ancillaries(Columns).Xice] = Xice_c_cell{:};
+            
         end
         Yif_cor = permute(Yif_cor,[2,3,1]);
         Yif_cor_ori = permute(Yif_cor_ori,[2,3,1]);
@@ -731,7 +764,9 @@ switch upper(PROC_MODE)
         AB_est = permute(AB_est,[2,3,1]);
         Ice_est = permute(Ice_est,[2,3,1]);
         T_est  = squeeze(T_est);
-        X = permute(X,[2,3,1]);
+        Xt = permute(Xt,[2,3,1]);
+        Xlib = permute(Xlib,[2,3,1]);
+        Xice = permute(Xice,[2,3,1]);
         badspcs = squeeze(badspcs);
         Valid_pixels = ~badspcs;
     
@@ -787,6 +822,7 @@ fprintf(fid,'COLUMNS:'); fprintf(fid,' %d',column_idxes); fprintf(fid, '\n');
 fprintf(fid,'METHODTYPE: %s\n',mt);
 fprintf(fid,'OPTBP: %s\n',optBP);
 fprintf(fid,'VERBOSE: %d\n', verbose);
+fprintf(fid,'COLUMN_SKIP: %d\n',column_skip);
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 fprintf(fid,'T_MODE: %d\n', t_mode);
@@ -853,9 +889,11 @@ if save_file
     fprintf('Saving %s ...\n',fname_supple);
     switch PROC_MODE
         case {'CPU_1','GPU_1'}
-            save(fname_supple,'wa','bands','line_idxes','T_est','ancillaries','Valid_pixels');
+            save(fname_supple,'wa','bands','line_idxes','T_est',...
+                'ancillaries','Valid_pixels');
         case {'GPU_BATCH_2'}
-            save(fname_supple,'wa','bands','line_idxes','T_est','X','Yif_isnan');
+            save(fname_supple,'wa','bands','line_idxes','T_est',...
+                'Xt','Xlib','Xice','Yif_isnan');
     end
     fprintf('Done\n');
 
@@ -1000,18 +1038,11 @@ elseif nargout==1
     out.interleave_out     = interleave_out;
     out.subset_columns_out = subset_columns_out;
     
-    switch upper(PROC_MODE)
-        case {'CPU_1','GPU_1'}
-            if subset_columns_out
-                ancillaries  = ancillaries(column_idxes);
-            end
-            out.ancillaries  = ancillaries;
-        case {'CPU_2','GPU_2','GPU_BATCH_2'}
-            X = permute(X(:,column_idxes,:),prmt_ordr);
-            out.X = X;
-        otherwise
-            error('Undefined PROC_MODE=%s',PROC_MODE);
+    if subset_columns_out
+        ancillaries  = ancillaries(column_idxes);
     end
+    out.ancillaries  = ancillaries;
+    
 end
 
 

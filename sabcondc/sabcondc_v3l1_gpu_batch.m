@@ -1,6 +1,6 @@
-function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc]...
+function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc]...
     = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
-% [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc]...
+% [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc]...
 %     = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
 %
 % Perform sabcondc_v3l1 with Algorithm 2 (bad entries are exactly ignored).
@@ -32,8 +32,12 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc]...
 %       estimated ice contributions
 %   logYif_isnan: boolean array, [B x L x S]
 %       bad entries are flagged.
-%   X: [(1+Nlib+Nice) x L x S]
-%       estimated abundance matrix
+%   Xt: [1 x L x S]
+%       estimated path length matrix
+%   Xlib: [Nlib x L x S]
+%       estimated abundance matrix associated with lib
+%   Xice: [Nice x L x S]
+%       estimated coefficients associated with Aicelib
 %   badspc: boolean array, [1 x L x S]
 %       flag if the spectra has too many bad entries (>THREHOLD_BADSPC)
 %
@@ -350,6 +354,7 @@ lambda_a_2 = ones(1+Nice+Nlib,L,S,precision,gpu_varargin{:});
 lambda_a_2(1,:,:) = 0;
 lambda_a_2(2:(Nice+1),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
 lambda_a_2((2+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
+lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
 % rho = ones([1,L,S],precision,'gpuArray');
 Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(Ntc+Nice+Nlib+Nc+B),:,:));
 % lambda_tmp = lambda_a;
@@ -357,7 +362,6 @@ Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(Ntc+Nice+Nlib+N
 % lambda_tmp = lambda_tmp .* resNewNrm ./ resNrm;
 
 for n=2:nIter
-    lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
     % tic;
     if n==2
         if batch
@@ -438,6 +442,7 @@ for n=2:nIter
     resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
     A(:,1,:) = logt_est;
+    lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
     
 end
 
@@ -482,6 +487,10 @@ if batch
         = gather(logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc);
 else
 end
+
+Xt           = X(1,:,:);
+Xice         = X(2:(Nice+1),:,:);
+Xlib         = X((Nice+2):(Nlib+Nice+1),:,:);
 
 end
 

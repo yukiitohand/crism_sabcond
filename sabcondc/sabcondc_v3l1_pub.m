@@ -34,7 +34,11 @@ function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan
 %       bad entries are flagged.
 %   ancillary: ancillary information
 %       Field contains
-%           X: [(1+Nlib+Nice) x L] estimated abundance matrix
+%           Xt: [1 x L] estimated path lengh parameters
+%           Xlib: [Nlib x L] estimated abundances associated with library
+%                 Alib.
+%           Xice: [Nice x L] estimated abundances associated with library
+%                 Aicelib.
 %           gp_bool: boolean array, [L x 1]
 %   vldpxl: boolean array, [1 x L]
 %       flag if the spectra has sufficiently a small number of bad entries
@@ -260,7 +264,7 @@ D = [zeros(1,size(D1,2),precision); D1(idxAicestrt:end,:)];
 C = C1;
 Z = Z1;
 
-rho = ones([1,Ny]);
+rho = ones([1,Ny],precision); Rhov = ones((1+Nice+Nlib),1,precision);
 
 clear X1 Z1 C1 D1;
 
@@ -271,12 +275,13 @@ idxAlib = false(1,N_A); idxAlib((Nice+2):end) = true;
 lambda_a_2 = zeros(N_A,Ny,precision);
 lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
 lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
+lambda_a_2(idxAlib,:) = lambda_tmp.*ones(Nlib,Ny,precision);
+lambda_a_2(idxAice,:) = lambda_tmp_ice.*ones(Nice,Ny,precision);
 
 for j=2:nIter+1
     % lambda_a_2(2:end) = lambda_tmp;   
     % rr = logYifc_bprmvd - A_bprmvd*X - C*Z;
-    lambda_a_2(idxAlib,:) = lambda_tmp.*ones(Nlib,Ny,precision);
-    lambda_a_2(idxAice,:) = lambda_tmp_ice.*ones(Nice,Ny,precision);
+    
     if j==2
         [ X(:,vldpxl),Z(:,vldpxl),C,~,D(:,vldpxl),rho(:,vldpxl),Rhov ]...
             = huwacbl1_admm_gat_a(A_bprmvd,logYifc_bprmvd(:,vldpxl),wvc_bprmvd,...
@@ -328,6 +333,9 @@ for j=2:nIter+1
     
     lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
     lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
+    
+    lambda_a_2(idxAlib,:) = lambda_tmp.*ones(Nlib,Ny,precision);
+    lambda_a_2(idxAice,:) = lambda_tmp_ice.*ones(Nice,Ny,precision);
 
 end
 
@@ -371,7 +379,9 @@ logBg = interp_nan_column(logBg,logYifc_isnan,wvc);
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < th_badspc;
 
 ancillary = [];
-ancillary.X = X;
+ancillary.Xt   = X(1,:);
+ancillary.Xlib = X(idxAlib,:);
+ancillary.Xice = X(idxAice,:);
 ancillary.gp_bool = gp_bool;
 
 
