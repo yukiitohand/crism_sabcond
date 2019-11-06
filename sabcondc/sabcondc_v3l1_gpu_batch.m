@@ -16,7 +16,7 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %       each of the page is library matrix for column s
 %   logT: array, [B x Ntc x S]
 %       each of the page is collection of transmission spectra for column s
-%   BP: boolean, [B x 1 x S]
+%   BP: boolean or 1nan form, [B x 1 x S]
 %       bad pixel information
 %
 % OUTPUT PARAMETERS
@@ -207,6 +207,7 @@ logYif_isnan = isnan(logYif);
 badspc = (sum(logYif_isnan,1)/B) > 0.5;
 
 % mark bad pixels and badspc
+BP = (BP==1);
 logYif_isnan = or(logYif_isnan,BP);
 logYif_isnan = or(logYif_isnan,badspc);
 

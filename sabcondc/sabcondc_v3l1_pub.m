@@ -1,9 +1,9 @@
 function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,...
     ancillary,vldpxl]...
-    = sabcondc_v3l1_pub( Alib,logYifc,wvc,logtc,varargin )
+    = sabcondc_v3l1_pub( Alib,logYifc,wvc,logtc,gp,varargin )
 % [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,...
 %    ancillary,vldpxl]...
-%    = sabcondc_v3l1_pub( Alib,logYifc,wvc,logtc,varargin )
+%    = sabcondc_v3l1_pub( Alib,logYifc,wvc,logtc,gp,varargin )
 % Perfrom atmospheric and de-noising of CRISM data with Algorithm 1 (bad
 % entries are replaced with model values at each iteration).
 %
@@ -16,6 +16,8 @@ function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan
 %       wavelength frame
 %   logtc: array, [B x Ntc]
 %       collection of transmission spectra
+%   gp: boolean or 1nan form [B x 1]
+%       good pixels
 %
 % OUTPUT PARAMETERS
 %   logt_est: array, [B x 1]
@@ -39,7 +41,6 @@ function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan
 %                 Alib.
 %           Xice: [Nice x L] estimated abundances associated with library
 %                 Aicelib.
-%           gp_bool: boolean array, [L x 1]
 %   vldpxl: boolean array, [1 x L]
 %       flag if the spectra has sufficiently a small number of bad entries
 %       (<THREHOLD_BADSPC)
@@ -102,7 +103,6 @@ function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan
 Aicelib = [];
 nIter = 5;
 th_badspc = 0.8;
-gp = [];
 % ## HUWACB PARAMETERS #---------------------------------------------------
 lambda_a = 0.01;
 lambda_a_ice = 0;
@@ -131,8 +131,7 @@ else
                 nIter = varargin{i+1};
             case 'THRESHOLD_BADSPC'
                 th_badspc = varargin{i+1};
-            case 'GP'
-                gp = varargin{i+1};
+
             % ## HUWACB PARAMETERS #---------------------------------------
             case 'LAMBDA_A'
                 lambda_a = varargin{i+1};
@@ -382,7 +381,5 @@ ancillary = [];
 ancillary.Xt   = X(1,:);
 ancillary.Xlib = X(idxAlib,:);
 ancillary.Xice = X(idxAice,:);
-ancillary.gp_bool = gp_bool;
-
 
 end
