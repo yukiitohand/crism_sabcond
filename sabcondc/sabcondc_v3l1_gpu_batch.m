@@ -310,6 +310,7 @@ lambda_a_2 = zeros(Nlib+Nice+Ntc,L,S,precision,gpu_varargin{:});
 switch weight_mode
     case 0
         lambda_r = ones(B,L,S,precision,gpu_varargin{:});
+        lambda_r(logYif_isnan_ori) = 0;
     case 1
         % compute weight
         mYif = nanmean(Yif,2);
@@ -325,6 +326,7 @@ switch weight_mode
                                         RDimg,WA,WA_um_pitch,lbl,SFimg);
         %
         lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)/(B*20);
+        lambda_r(logYif_isnan_ori) = 0;
 end
 
 lambda_a_2((1+Ntc):(Ntc+Nice),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
@@ -334,7 +336,7 @@ lambda_a_2((1+Ntc+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargi
 % 
 lambda_c(logYif_isnan) = inf;
 lambda_c([1,Nc],:,:) = 0; % safeguard
-lambda_r(logYif_isnan) = 0;
+
 
 c2_z = zeros([Nc,1],precision);
 % c2_z = zeros([Nc,1],precision,'gpuArray');
@@ -369,32 +371,44 @@ RR = logYif - Ymdl;
 switch weight_mode
     case 0
         RR_std = nanstd(RR,[],2);
+        % noticed this de-noising is slightly different from the one in
+        % sabcondc_v3l1_pub.m
+        % I think the below one is the one I wanted to try...
+        % logYif_isnan = or(logYif_isnan_ori,and(abs(RR)>0.1,RR_std>0.015));
+        %
         logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.1 );
         logYif_isnan = or(logYif_isnan,RR_std>0.015);
+        
         % finally flag spectra that have too many bad channels.
         badspc = (sum(logYif_isnan,1)/B) > th_badspc;
         logYif_isnan = or(logYif_isnan,badspc);
         lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
         
     case 1
+        Ymdl = exp(Ymdl);
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
                                         RDimg,WA,WA_um_pitch,lbl,SFimg);
-        mad_bprmvd_rr1_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
-        res_exp1 = Yif - Ymdl;
-        mad_bprmvd_rr1_prac = robust_v3('med_abs_dev_from_med',res_exp1,2,'NOutliers',10);
-        mad_bprmvd_log1 = robust_v3('med_abs_dev_from_med',RR,2,'NOutliers',10);
-        mad_bprmvd_rr1 = max(mad_bprmvd_rr1_theor,mad_bprmvd_rr1_prac);
+        mad_rr_band_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
+        res_exp = Yif - Ymdl;
+        mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
+        mad_log_band = robust_v3('med_abs_dev_from_med',RR,2,'NOutliers',10);
+        mad_rr_band = max(mad_rr_band_theor,mad_rr_band_prac);
         
-        logYif_isnan_bp = false(size(Ymodel_bprmvd));
-        bp_est_bool = and(mad_bprmvd_rr1>0.0015,mad_bprmvd_log1>0.005);
-        logYif_isnan_bp(bp_est_bool,:) = true;
-        logYif_isnan = or(logYif_isnan_bp,logYif_isnan_ori);
+        bp_est_bool = and(mad_rr_band>0.0015, mad_log_band>0.005);
         
+        logYif_isnan = or(logYif_isnan_ori,bp_est_bool);
+        
+        % check too many bad entries are detected for each spectrum.
         badspc = (sum(logYif_isnan,1)/B) > th_badspc;
         
-end
+        
+        logYif_isnan = or(logYif_isnan,badspc);
 
+        
+        % update lambda_r? not sure.
+        
+end
 
 lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
 lambda_c([1,Nc],:,:) = 0; % safeguard
@@ -436,22 +450,23 @@ switch weight_mode
 
     case 1
         if batch
-            Ymdl = Ymdl - pagefun(@mtimes,logT,X(1:Ntc,:,:)) ...
-                + pagefun(@mtimes,logt_est,Xtc);
+            Ymdl = exp(log(Ymdl) - pagefun(@mtimes,logT,X(1:Ntc,:,:)) ...
+                + pagefun(@mtimes,logt_est,Xtc));
         else
-            Ymdl = Ymdl - logT*X(1:Ntc,:,:) + logt_est*Xtc;
+            Ymdl = exp(log(Ymdl) - logT*X(1:Ntc,:,:) + logt_est*Xtc);
         end
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
                                         RDimg,WA,WA_um_pitch,lbl,SFimg);
-        mad_bprmvd_rr1_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
-        res_exp1 = Yif - Ymdl;
-        mad_bprmvd_rr1_prac = robust_v3('med_abs_dev_from_med',res_exp1,2,...
+        mad_rr_theor = stdl1_ifdf+photon_noise_mad_stdif;
+        res_exp = Yif - Ymdl;
+        mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,...
             'NOutliers',10);
-        mad_bprmvd_rr1 = max(mad_bprmvd_rr1_theor,mad_bprmvd_rr1_prac);
         
-        lambda_r = 1./mad_bprmvd_rr1.*(Ymdl)./((L_bprmvd-sum(bp_est_bool))*20);
-        lambda_r(logYifc_bprmvd_isnan) = 0;
+        lambda_r = 1./max(mad_rr_theor,mad_rr_band_prac).*(Ymdl)./(B*20);
+        
+        % do we need this?
+        lambda_r(logYif_isnan) = 0;
 end
 
 resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
@@ -513,17 +528,53 @@ for n=2:nIter
     % toc;
     % evaluate bad pixels
     if batch
-        RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
+        Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
     else
-        RR = logYif - A*X - C*Z;
+        Ymdl = A*X + C*Z;
     end
-    logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.015 );
-    badspc = (sum(logYif_isnan,1)/B) > th_badspc;
-    logYif_isnan = or(logYif_isnan,badspc);
+    RR = RR - Ymdl;
+    
+    % ## denoising ##------------------------------------------------------
+    switch weight_mode
+        case 0
+            logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.015 );
+            badspc = (sum(logYif_isnan,1)/B) > th_badspc;
+            logYif_isnan = or(logYif_isnan,badspc);
+            lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
+        case 1
+            Ymdl = exp(Ymdl);
+            RDimg = if2rd(Ymdl,SFimg,lbl);
+            [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
+                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+            res_exp = Yif - Ymdl;
+            mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
+            mad_rr_band = max(mad_rr_band_theor,mad_rr_band_prac);
+            mad_expected = max(mad_bprmvd,(stdl1_ifdf+photon_noise_mad_stdif));
+
+            % More rigid bad pixel detection
+            bp_est_bool = mad_rr_band>0.001;
+            
+            % Now perform temporal spike removal (assuming that bias 
+            % problem is gone)
+            % The residual is evaluated in atm-corrected i/f domain.
+            res_exp_scaled = res_exp./(exp(A(:,1)).^X(1,:));
+            logYifc_isnan_spk = abs(res_exp_scaled)>0.0015;
+            
+            % combine bad entry detections
+            logYif_isnan = or(logYifc_isnan_ori, or(bp_est_bool,logYifc_isnan_spk));
+            
+            % check too many bad entries are detected for each spectrum.
+            badspc = (sum(logYif_isnan,1)/B) > th_badspc;
+            logYif_isnan = or(logYif_isnan,badspc);
+            
+            lambda_r = 1./mad_expected.*(Ymdl)./(B*20);
+            % do we need to set lambda_r to zero?? not sure.
+            lambda_r(logYif_isnan) = 0;
+    end
 
     lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
     lambda_c([1,Nc],:,:) = 0; % safeguard
-    lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
+    
     
     resNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
@@ -553,6 +604,8 @@ for n=2:nIter
         RR = RR - logt_est*X(1,:);
     end
     resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
+    
+    % do we need to update lambda here? not sure.
     
     A(:,1,:) = logt_est;
     lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
