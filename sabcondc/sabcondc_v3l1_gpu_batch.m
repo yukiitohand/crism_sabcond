@@ -53,6 +53,9 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %       threshold value for which the spectra is considered to be
 %       completely corrupted
 %       (default) 0.8
+%   'LAMBDA_UPDATE_RULE': string {'L1SUM','MED','NONE'}
+%       define how to update trade-off parameters.
+%       (default) 'L1SUM'
 %  ## HUWACB PARAMETERS #--------------------------------------------------
 %   'LAMBDA_A': scalar,
 %        trade-off parameter, controling sparsity of the coefficients of Alib
@@ -127,9 +130,10 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 Aicelib   = [];
 nIter     = int32(5);
 th_badspc = 0.8;
+lambda_update_rule = 'L1SUM';
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = [];
-stdl1_ifd   = [];
+stdl1_ifdf  = [];
 SFimg       = [];
 WA_um_pitch = [];
 lbl         = [];
@@ -162,6 +166,8 @@ else
                 nIter = varargin{i+1};
             case 'THRESHOLD_BADSPC'
                 th_badspc = varargin{i+1};
+            case 'LAMBDA_UPDATE_RULE'
+                lambda_update_rule = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -482,7 +488,16 @@ lambda_a_2 = ones(1+Nice+Nlib,L,S,precision,gpu_varargin{:});
 lambda_a_2(1,:,:) = 0;
 lambda_a_2(2:(Nice+1),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
 lambda_a_2((2+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
-lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
+
+switch upper(lambda_update_rule)
+    case 'L1SUM'
+        lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
+    case 'MED'
+        error('not implemented yet');
+    case 'NONE'
+    otherwise
+        error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
+end
 % rho = ones([1,L,S],precision,'gpuArray');
 Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(Ntc+Nice+Nlib+Nc+B),:,:));
 % lambda_tmp = lambda_a;
@@ -532,7 +547,7 @@ for n=2:nIter
     else
         Ymdl = A*X + C*Z;
     end
-    RR = RR - Ymdl;
+    RR = logYif - Ymdl;
     
     % ## denoising ##------------------------------------------------------
     switch weight_mode
@@ -549,7 +564,7 @@ for n=2:nIter
             res_exp = Yif - Ymdl;
             mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
             mad_rr_band = max(mad_rr_band_theor,mad_rr_band_prac);
-            mad_expected = max(mad_bprmvd,(stdl1_ifdf+photon_noise_mad_stdif));
+            mad_expected = max(mad_rr_band_prac,(stdl1_ifdf+photon_noise_mad_stdif));
 
             % More rigid bad pixel detection
             bp_est_bool = mad_rr_band>0.001;
@@ -558,10 +573,10 @@ for n=2:nIter
             % problem is gone)
             % The residual is evaluated in atm-corrected i/f domain.
             res_exp_scaled = res_exp./(exp(A(:,1)).^X(1,:));
-            logYifc_isnan_spk = abs(res_exp_scaled)>0.0015;
+            logYif_isnan_spk = abs(res_exp_scaled)>0.0015;
             
             % combine bad entry detections
-            logYif_isnan = or(logYifc_isnan_ori, or(bp_est_bool,logYifc_isnan_spk));
+            logYif_isnan = or(logYif_isnan_ori, or(bp_est_bool,logYif_isnan_spk));
             
             % check too many bad entries are detected for each spectrum.
             badspc = (sum(logYif_isnan,1)/B) > th_badspc;
@@ -608,7 +623,17 @@ for n=2:nIter
     % do we need to update lambda here? not sure.
     
     A(:,1,:) = logt_est;
-    lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
+    
+    switch upper(lambda_update_rule)
+        case 'L1SUM'
+            lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
+        case 'MED'
+            error('not implemented yet');
+        case 'NONE'
+        otherwise
+            error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
+    end
+    
     
 end
 

@@ -149,11 +149,25 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       mode id of weight option. 0 for uniform weight, 1 for weight based
 %       on noise estimation.
 %       (default) 0
+%   'LAMBDA_UPDATE_RULE': string {'L1SUM','MED','NONE'}
+%       define how to update trade-off parameters.
+%       (default) 'L1SUM'
+%   'THRESHOLD_BADSPC': scalar
+%       threshold value for which the spectra is considered to be
+%       completely corrupted
+%       (default) 0.8
 %
 %  ## TRANSMISSION SPECTRUM OPTIONS #--------------------------------------
-%    'T_MODE': integer
+%    'T_MODE': integer {1,2,3,4,5}
 %       option for what kind of transmission spectrum frame is used.
 %       (default) 2
+%    'OBS_ID_T': string
+%       obs_id of the transmission file used for processing. Only valid for
+%       T_MODE=5.
+%       (default) ''
+%    'VARARGIN_T': cell
+%       varargin for the function 'load_T_given' or 'load_T_sclk_closest'
+%       (default) {}
 %
 %  ## LIBRARY OPTIONS #----------------------------------------------------
 %   'CNTRMVL': boolean
@@ -215,7 +229,7 @@ save_pdir          = './resu/';
 save_dir_yyyy_doy  = false;
 force              = false;
 skip_ifexist       = false;
-additional_suffix  = 'v1';
+additional_suffix  = '';
 interleave_out     = 'lsb';
 interleave_default = 'lsb';
 subset_columns_out = false;
@@ -233,9 +247,13 @@ optBP        = 'pri';                  %{'pri','all','none'}
 verbose      = 0;
 column_skip  = 1;
 weight_mode  = 0;
+lambda_update_rule = 'L1SUM';
+th_badspc    = 0.8;
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 t_mode = 2;
+obs_id_T = '';
+varargin_T = {};
 
 % ## LIBRARY OPTIONS #-----------------------------------------------------
 cntRmvl         = 1;
@@ -307,10 +325,18 @@ else
                 column_skip = varargin{i+1};
             case 'WEIGHT_MODE'
                 weight_mode = varargin{i+1};
+            case 'LAMBDA_UPDATE_RULE'
+                lambda_update_rule = varargin{i+1};
+            case 'THRESHOLD_BADSPC'
+                th_badspc = varargin{i+1};
                 
             % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------
             case 'T_MODE'
                 t_mode = varargin{i+1};
+            case 'OBS_ID_T'
+                obs_id_T = varargin{i+1};
+            case 'VARARGIN_T'
+                varargin_T = varargin{i+1};
                 
             % ## LIBRARY OPTIONS #-----------------------------------------
             case 'CNTRMVL'
@@ -413,8 +439,9 @@ switch upper(opt_img)
     case 'RA_IF'
         basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
     case {'TRRY','TRRB','TRRC','TRRD'}
+        trr_vr = opt_img(4);
         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
-        prop.version = opt_img(4);
+        prop.version = trr_vr;
         basenameTRRY = get_basenameOBS_fromProp(prop);
         basename_cr = [basenameTRRY suffix];
     otherwise
@@ -530,65 +557,70 @@ switch weight_mode
         SFimg       = zeros(nB,1,nCall,0);
     case 1
         %% compute the weight for each dimension
-        switch TRRIFdata.lbl.OBSERVATION_TYPE
-            case {'FRT','HRL','HRS','FFC'}
-                Noutliers = 4;
-            case {'FRS','ATO'}
-                Noutliers = 2;
-            otherwise
-                error('Please define for other cases')
-        end
-        % load processed dark files
-        propDF1_IF = DFdata1.prop;
-        propDF1_IF.activity_id = 'IF';
-        propDF1_IF.product_type = 'TRR';
-        propDF1_IF.version = trr_vr;
-        bnameDF1_IF = get_basenameOBS_fromProp(propDF1_IF);
-        load(joinPath(d_yuk_trr,[bnameDF1_IF '.mat']),'IoF_bk1_o');
-        IoF_bk1_o = flip(IoF_bk1_o,3);
-        IoF_bk1_o = permute(IoF_bk1_o,[3,1,2]);
-        switch TRRIFdata.lbl.OBSERVATION_TYPE
-            case {'FRT','HRL','HRS','FFC'}
-                propDF2_IF = DFdata2.prop;
-                propDF2_IF.activity_id = 'IF';
-                propDF2_IF.product_type = 'TRR';
-                propDF2_IF.version = trr_vr;
-                bnameDF2_IF = get_basenameOBS_fromProp(propDF2_IF);
-                load(joinPath(d_yuk_trr,[bnameDF2_IF '.mat']),'IoF_bk2_o');
-                IoF_bk2_o = flip(IoF_bk2_o,3);
-                IoF_bk2_o = permute(IoF_bk2_o,[3,1,2]);
-            case {'FRS','ATO'}
-                IoF_bk2_o = [];
-            otherwise
-                error('Please define for other cases')
-        end
-
-        stdl1_ifdf = nan(size(GP));
-        ifdfImage = cat(2,IoF_bk1_o,IoF_bk2_o);
-        for cd = 1:nCall
-            ifdfimagec = ifdfImage(bands,:,cd);
-            % std_df = robust_v3('stdl1',ifdfimagec,2,'NOutliers',Noutliers);
-            std_df = robust_v3('med_abs_dev_from_med',ifdfimagec,2,'NOutliers',Noutliers);
-            stdl1_ifdf(:,:,cd) = std_df(:);
-        end
-        
-        % read SFdata
         switch upper(opt_img)
-            case {'IF','RA_IF','TRRY','TRRB'}
-                SFdata = TRRIFdata.readCDR('SF');
+            case {'IF','RA_IF'}
+                error('weight_mode=%d only works with TRRB,TRRC,TRRC',weight_mode);
+            case {'TRRY','TRRB','TRRC','TRRD'}
+                switch TRRIFdata.lbl.OBSERVATION_TYPE
+                    case {'FRT','HRL','HRS','FFC'}
+                        Noutliers = 4;
+                    case {'FRS','ATO'}
+                        Noutliers = 2;
+                    otherwise
+                        error('Please define for other cases')
+                end
+                % load processed dark files
+                propDF1_IF = DFdata1.prop;
+                propDF1_IF.activity_id = 'IF';
+                propDF1_IF.product_type = 'TRR';
+                propDF1_IF.version = trr_vr;
+                bnameDF1_IF = get_basenameOBS_fromProp(propDF1_IF);
+                load(joinPath(d_IoF,[bnameDF1_IF '.mat']),'IoF_bk1_o');
+                IoF_bk1_o = flip(IoF_bk1_o,3);
+                IoF_bk1_o = permute(IoF_bk1_o,[3,1,2]);
+                switch TRRIFdata.lbl.OBSERVATION_TYPE
+                    case {'FRT','HRL','HRS','FFC'}
+                        propDF2_IF = DFdata2.prop;
+                        propDF2_IF.activity_id = 'IF';
+                        propDF2_IF.product_type = 'TRR';
+                        propDF2_IF.version = trr_vr;
+                        bnameDF2_IF = get_basenameOBS_fromProp(propDF2_IF);
+                        load(joinPath(d_IoF,[bnameDF2_IF '.mat']),'IoF_bk2_o');
+                        IoF_bk2_o = flip(IoF_bk2_o,3);
+                        IoF_bk2_o = permute(IoF_bk2_o,[3,1,2]);
+                    case {'FRS','ATO'}
+                        IoF_bk2_o = [];
+                    otherwise
+                        error('Please define for other cases')
+                end
 
-            case {'TRRC','TRRD'}
-                SFdata = TRRIFdata.readCDR('SF');
+                stdl1_ifdf = nan(size(GP));
+                ifdfImage = cat(2,IoF_bk1_o,IoF_bk2_o);
+                for cd = 1:nCall
+                    ifdfimagec = ifdfImage(bands,:,cd);
+                    % std_df = robust_v3('stdl1',ifdfimagec,2,'NOutliers',Noutliers);
+                    std_df = robust_v3('med_abs_dev_from_med',ifdfimagec,2,'NOutliers',Noutliers);
+                    stdl1_ifdf(:,:,cd) = std_df(:);
+                end
 
-            otherwise
-                error('opt_img = %s is not defined',opt_img);
+                % read SFdata
+                switch upper(opt_img)
+                    case {'TRRY','TRRB'}
+                        SFdata = TRRIFdata.readCDR('SF');
+
+                    case {'TRRC','TRRD'}
+                        SFdata = TRRIFdata.readCDR('SF');
+
+                    otherwise
+                        error('opt_img = %s is not defined',opt_img);
+                end
+
+                % Estimate the amount of photon noise
+                [WA_um_pitch] = get_WA_um_pitch_CRISM(WAdata);
+                WA_um_pitch = permute(WA_um_pitch(:,:,bands),[3,1,2]);
+                SFimg = SFdata.readimgi();
+                SFimg = permute(SFimg(:,:,bands),[3,1,2]);
         end
-            
-        % Estimate the amount of photon noise
-        [WA_um_pitch] = get_WA_um_pitch_CRISM(WAdata);
-        WA_um_pitch = permute(WA_um_pitch(:,:,bands),[3,1,2]);
-        SFimg = SFdata.readimgi();
-        SFimg = permute(SFimg(:,:,bands),[3,1,2]);
     otherwise
         error('Undefined weight mode: %d',weight_mode);
 end
@@ -600,7 +632,12 @@ switch t_mode
         [ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
                                    'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
     case {4}
-        [ at_trans ] = load_T();
+        sclk_img = (TRRIFdata.get_sclk_start()+TRRIFdata.get_sclk_stop())/2;
+        [ at_trans ] = load_T_sclk_closest(sclk_img,varargin_T{:});
+        at_trans = bin_image_frames(at_trans,'binning',propWA.binning);
+    case {5}
+        [ at_trans ] = load_T_given( obs_id_T,varargin_T{:});
+        at_trans = bin_image_frames(at_trans,'binning',propWA.binning);
     otherwise
         error('Undefined t_mode %d',t_mode);
 end
@@ -720,7 +757,8 @@ switch upper(PROC_MODE)
                   'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
                   'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
                   'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
-                  'Aicelib',Aicelib);
+                  'Aicelib',Aicelib,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
+                  'THRESHOLD_BADSPC',th_badspc);
 
             Yif_cor(lBool,c,bBool) = reshape(logYifc_cor',[nL,1,nB]);
             Yif_cor_ori(lBool,c,bBool) = reshape(logYifc_cor_ori',[nL,1,nB]);
@@ -819,7 +857,8 @@ switch upper(PROC_MODE)
                               'Aicelib',Aicelibs,'nIter',nIter,...
                               'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
                               'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
-                              'gpu',gpu,'WEIGHT_MODE',weight_mode);
+                              'gpu',gpu,'WEIGHT_MODE',weight_mode,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
+                              'THRESHOLD_BADSPC',th_badspc);
                 case 1
                     [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
                         AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
@@ -830,7 +869,8 @@ switch upper(PROC_MODE)
                               'Aicelib',Aicelibs,'nIter',nIter,...
                               'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
                               'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
-                              'gpu',gpu,...
+                              'gpu',gpu,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
+                              'THRESHOLD_BADSPC',th_badspc,...
                               'WEIGHT_MODE',weight_mode,...
                               'STDL1_IFDF',stdl1_ifdf(:,:,Columns),'SFIMG',SFimg(:,:,Columns),...
                               'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl);
@@ -922,9 +962,22 @@ fprintf(fid,'OPTBP: %s\n',optBP);
 fprintf(fid,'VERBOSE: %d\n', verbose);
 fprintf(fid,'COLUMN_SKIP: %d\n',column_skip);
 fprintf(fid,'WEIGHT_MODE: %d\n',weight_mode);
+fprintf(fid,'LAMBDA_UPDATE_RULE: %s\n',lambda_update_rule);
+fprintf(fid,'THRESHOLD_BADSPC: %f\n',th_badspc);
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 fprintf(fid,'T_MODE: %d\n', t_mode);
+fprintf(fid,'OBS_ID_T: %s\n',obs_id_T);
+fprintf(fid,'VARARGIN_T:');
+for i=1:length(varargin_T)
+    if isnumeric(varargin_T{i})
+        string_varargin_T = num2str(varargin_T{i});
+    else
+        string_varargin_T = varargin_T{i};
+    end
+    fprintf(' %s', string_varargin_T);
+end
+fprintf('\n');
 
 % ## LIBRARY OPTIONS #-----------------------------------------------------
 fprintf(fid,'CNTRMVL: %d\n',cntRmvl);

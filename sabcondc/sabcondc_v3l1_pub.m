@@ -56,6 +56,9 @@ function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan
 %       threshold value for which the spectra is considered to be
 %       completely corrupted
 %       (default) 0.8
+%   'LAMBDA_UPDATE_RULE': string {'L1SUM','MED','NONE'}
+%       define how to update trade-off parameters.
+%       (default) 'L1SUM'
 %  ## HUWACB PARAMETERS #--------------------------------------------------
 %   'LAMBDA_A': scalar,
 %        trade-off parameter, controling sparsity of the coefficients of Alib
@@ -102,6 +105,7 @@ function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan
 Aicelib = [];
 nIter = 5;
 th_badspc = 0.8;
+lambda_update_rule = 'L1SUM';
 % ## HUWACB PARAMETERS #---------------------------------------------------
 lambda_a = 0.01;
 lambda_a_ice = 0;
@@ -130,6 +134,8 @@ else
                 nIter = varargin{i+1};
             case 'THRESHOLD_BADSPC'
                 th_badspc = varargin{i+1};
+            case 'LAMBDA_UPDATE_RULE'
+                lambda_update_rule = varargin{i+1};
 
             % ## HUWACB PARAMETERS #---------------------------------------
             case 'LAMBDA_A'
@@ -271,8 +277,20 @@ idxAlib = false(1,N_A); idxAlib((Nice+2):end) = true;
 
 % always update lambda_tmp
 lambda_a_2 = zeros(N_A,Ny,precision);
-lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
-lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
+
+switch upper(lambda_update_rule)
+    case 'L1SUM'
+        lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
+        lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
+    case 'MED'
+        error('not implemented yet');
+    case 'NONE'
+
+    otherwise
+        error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
+end
+
+
 lambda_a_2(idxAlib,:) = lambda_tmp.*ones(Nlib,Ny,precision);
 lambda_a_2(idxAice,:) = lambda_tmp_ice.*ones(Nice,Ny,precision);
 
@@ -329,8 +347,16 @@ for j=2:nIter+1
     
     A_bprmvd(:,1) = logt_est_bprmvd;
     
-    lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
-    lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
+    switch upper(lambda_update_rule)
+        case 'L1SUM'
+            lambda_tmp = lambda_tmp*resNewNrm_bprmvd/resNrm_bprmvd;
+            lambda_tmp_ice = lambda_tmp_ice*resNewNrm_bprmvd/resNrm_bprmvd;
+        case 'MED'
+            error('not implemented yet');
+        case 'NONE'
+        otherwise
+            error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
+    end
     
     lambda_a_2(idxAlib,:) = lambda_tmp.*ones(Nlib,Ny,precision);
     lambda_a_2(idxAice,:) = lambda_tmp_ice.*ones(Nice,Ny,precision);
