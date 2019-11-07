@@ -56,6 +56,9 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'LAMBDA_UPDATE_RULE': string {'L1SUM','MED','NONE'}
 %       define how to update trade-off parameters.
 %       (default) 'L1SUM'
+%   'FFC_MODE': boolean,
+%       if true, path length is fixed to one.
+%       (default) false
 %  ## HUWACB PARAMETERS #--------------------------------------------------
 %   'LAMBDA_A': scalar,
 %        trade-off parameter, controling sparsity of the coefficients of Alib
@@ -131,6 +134,7 @@ Aicelib   = [];
 nIter     = int32(5);
 th_badspc = 0.8;
 lambda_update_rule = 'L1SUM';
+ffc_mode  = false;
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = [];
 stdl1_ifdf  = [];
@@ -168,6 +172,8 @@ else
                 th_badspc = varargin{i+1};
             case 'LAMBDA_UPDATE_RULE'
                 lambda_update_rule = varargin{i+1};
+            case 'FFC_MODE'
+                ffc_mode = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -222,6 +228,13 @@ else
     end
 end
 
+
+switch weight_mode
+    case 0
+        y_normalize = true;
+    case 1
+        y_normalize = false;
+end
 
 %%
 %-------------------------------------------------------------------------%
@@ -284,7 +297,19 @@ Yif = exp(logYif);
 %-------------------------------------------------------------------------%
 % initialization using the matrix logT
 %-------------------------------------------------------------------------%
-A = cat(2,logT,Aicelib,Alib);
+if ffc_mode
+    A = cat(2,Aicelib,Alib);
+    N_A = Nice+Nlib;
+    idxAlogT = false(1,N_A);
+    idxAice = false(1,N_A); idxAice(1:Nice) = true;
+    idxAlib = false(1,N_A1); idxAlib((Nice+1):N_A) = true;
+else
+    A = cat(2,logT,Aicelib,Alib);
+    N_A = Ntc+Nice+Nlib;
+    idxAlogT = false(1,N_A); idxAlogT(1:Ntc) = true;
+    idxAice = false(1,N_A);  idxAice((Ntc+1):(Ntc+Nice)) = true;
+    idxAlib = false(1,N_A);  idxAlib((Ntc+Nice+1):N_A) = true;
+end
 % compute concave basese beforehand
 % C = concaveOperator(WA);
 % Dinv = C \ eye(B);
@@ -311,7 +336,11 @@ end
 % lambda_a2 = zeros(Nlib+Ntc,L,S,precision);
 % lambda_r = ones(B,L,S,precision);
 lambda_c = zeros(B,L,S,precision,gpu_varargin{:});
-lambda_a_2 = zeros(Nlib+Nice+Ntc,L,S,precision,gpu_varargin{:});
+if ffc_mode
+    lambda_a_2 = zeros(Nlib+Nice,L,S,precision,gpu_varargin{:});
+else
+    lambda_a_2 = zeros(Nlib+Nice+Ntc,L,S,precision,gpu_varargin{:});
+end
 
 switch weight_mode
     case 0
@@ -335,8 +364,8 @@ switch weight_mode
         lambda_r(logYif_isnan_ori) = 0;
 end
 
-lambda_a_2((1+Ntc):(Ntc+Nice),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
-lambda_a_2((1+Ntc+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
+lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
+lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 
 
 % 
@@ -351,17 +380,33 @@ c2_z(1) = -inf; c2_z(Nc) = -inf;
 % main computation
 % tic;
 if batch
-    [ X,Z,~,D,rho,Rhov,~,~,cost_val]...
-        = huwacbl1_admm_gat_a_batch(A,logYif,C,'LAMBDA_A',lambda_a_2,...
-                'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'C2_Z',c2_z,......
-                'tol',1e-5,'maxiter',maxiter_huwacb,'verbose',verbose_huwacb,...
-                'precision',precision); % toc;
+    if ffc_mode
+        [ X,Z,~,D,rho,Rhov,~,~,cost_val]...
+            = huwacbl1_admm_gat_a_batch(A,logYif-logT,C,'LAMBDA_A',lambda_a_2,...
+                    'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'C2_Z',c2_z,......
+                    'tol',1e-5,'maxiter',maxiter_huwacb,'verbose',verbose_huwacb,...
+                    'precision',precision,'YNORMALIZE',y_normalize);
+    else
+        [ X,Z,~,D,rho,Rhov,~,~,cost_val]...
+            = huwacbl1_admm_gat_a_batch(A,logYif,C,'LAMBDA_A',lambda_a_2,...
+                    'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'C2_Z',c2_z,......
+                    'tol',1e-5,'maxiter',maxiter_huwacb,'verbose',verbose_huwacb,...
+                    'precision',precision,'YNORMALIZE',y_normalize); % toc;
+    end
 else
-    [  X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
-    = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
-    'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
-    'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
-    'precision',precision,'gpu',gpu,'Concavebase',C,'debug',debug_huwacb);
+    if ffc_mode
+        [  X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+            = huwacbl1_admm_gat_a(A,logYif-logT,WA,'LAMBDA_A',lambda_a_2,...
+            'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'YNORMALIZE',y_normalize,.....
+            'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
+            'precision',precision,'gpu',gpu,'Concavebase',C,'debug',debug_huwacb);
+    else
+        [  X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+        = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
+        'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'YNORMALIZE',y_normalize,.....
+        'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
+        'precision',precision,'gpu',gpu,'Concavebase',C,'debug',debug_huwacb);
+    end
 end
 % toc;
 
@@ -371,6 +416,11 @@ if batch
 else
     Ymdl = A*X + C*Z;
 end
+
+if ffc_mode
+    Ymdl = Ymdl + logT;
+end
+
 RR = logYif - Ymdl;
 
 % ## denoising ##----------------------------------------------------------
@@ -425,12 +475,18 @@ lambda_c([1,Nc],:,:) = 0; % safeguard
 resNrm = nansum(abs(RR).* lambda_r,[1,2]);
 
 % Get initial transmission spectrum
-if batch
-    RR  = RR + pagefun(@mtimes,logT,X(1:Ntc,:,:));
+if ffc_mode
+    RR = RR + logT;
+    Xtc = ones(1,L,S,precision,gpu_varargin);
 else
-    RR = RR + logT*X(1:Ntc,:,:);
+    if batch
+        RR  = RR + pagefun(@mtimes,logT,X(idxAlogT,:,:));
+    else
+        RR = RR + logT*X(idxAlogT,:,:);
+    end
+    Xtc = sum(X(idxAlogT,:,:),1);
 end
-Xtc = sum(X(1:Ntc,:,:),1);
+
 if batch
     [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val,Kcond]...
            = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
@@ -456,10 +512,10 @@ switch weight_mode
 
     case 1
         if batch
-            Ymdl = exp(log(Ymdl) - pagefun(@mtimes,logT,X(1:Ntc,:,:)) ...
+            Ymdl = exp(log(Ymdl) - pagefun(@mtimes,logT,X(idxlogT,:,:)) ...
                 + pagefun(@mtimes,logt_est,Xtc));
         else
-            Ymdl = exp(log(Ymdl) - logT*X(1:Ntc,:,:) + logt_est*Xtc);
+            Ymdl = exp(log(Ymdl) - logT*X(idxlogT,:,:) + logt_est*Xtc);
         end
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
@@ -481,13 +537,31 @@ resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
 %-------------------------------------------------------------------------%
 % main loop
 %-------------------------------------------------------------------------%
-A = cat(2,logt_est,Aicelib,Alib);
-X = cat(1,Xtc,X((1+Ntc):end,:,:));
-D = cat(1,zeros(1,L,S,precision,gpu_varargin{:}),D((1+Ntc):end,:,:));
-lambda_a_2 = ones(1+Nice+Nlib,L,S,precision,gpu_varargin{:});
-lambda_a_2(1,:,:) = 0;
-lambda_a_2(2:(Nice+1),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
-lambda_a_2((2+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
+if ffc_mode
+    A = cat(2,Aicelib,Alib);
+    % X = X; D = D;
+    N_A = Nice+Nlib;
+    idxAlogT = false(1,N_A);
+    idxAice = false(1,N_A);  idxAice(1:Nice) = true;
+    idxAlib = false(1,N_A);  idxAlib((Nice+1):N_A) = true;
+    lambda_a_2 = ones(N_A,L,S,precision,gpu_varargin{:});
+    lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
+    lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
+else
+    A = cat(2,logt_est,Aicelib,Alib);
+    X = cat(1,Xtc,X((1+Ntc):(N_A+Nc+B),:,:));
+    D = cat(1,zeros(1,L,S,precision,gpu_varargin{:}),D((1+Ntc):(N_A+Nc+B),:,:));
+    Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(N_A+Nc+B),:,:));
+    
+    N_A = 1+Nice+Nlib;
+    idxAlogT = false(1,N_A); idxAlogT(1) = true;
+    idxAice = false(1,N_A);  idxAice((2):(Nice+1)) = true;
+    idxAlib = false(1,N_A);  idxAlib((Nice+2):N_A) = true;
+    lambda_a_2 = ones(N_A,L,S,precision,gpu_varargin{:});
+    lambda_a_2(1,:,:) = 0;
+    lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
+    lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
+end
 
 switch upper(lambda_update_rule)
     case 'L1SUM'
@@ -499,7 +573,7 @@ switch upper(lambda_update_rule)
         error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
 end
 % rho = ones([1,L,S],precision,'gpuArray');
-Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(Ntc+Nice+Nlib+Nc+B),:,:));
+
 % lambda_tmp = lambda_a;
 % always update lambda_tmp
 % lambda_tmp = lambda_tmp .* resNewNrm ./ resNrm;
@@ -508,36 +582,73 @@ for n=2:nIter
     % tic;
     if n==2
         if batch
-            [ X,Z,~,D,rho,Rhov,~,~,cost_val,Tcond ]...
-                = huwacbl1_admm_gat_a_batch(A,logYif,C,...
-                    'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
-                    'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
-                    'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
-                    'PRECISION',precision);
+            if ffc_mode
+                [ X,Z,~,D,rho,Rhov,~,~,cost_val,Tcond ]...
+                    = huwacbl1_admm_gat_a_batch(A,logYif-logt_est,C,...
+                        'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
+                        'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+                        'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
+                        'PRECISION',precision,'YNORMALIZE',y_normalize);
+            else
+                [ X,Z,~,D,rho,Rhov,~,~,cost_val,Tcond ]...
+                    = huwacbl1_admm_gat_a_batch(A,logYif,C,...
+                        'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
+                        'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+                        'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
+                        'PRECISION',precision,'YNORMALIZE',y_normalize);
+            end
         else
-            [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
-            = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
-            'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
-            'Z0',Z,'D0',D,'X0',X,'R0',RR,...
-            'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
-            'precision',precision,'gpu',gpu,'Concavebase',C,...
-            'debug',debug_huwacb);
+            if ffc_mode
+                [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+                = huwacbl1_admm_gat_a(A,logYif-logt_est,WA,'LAMBDA_A',lambda_a_2,...
+                'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+                'Z0',Z,'D0',D,'X0',X,'R0',RR,...
+                'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
+                'precision',precision,'gpu',gpu,'Concavebase',C,...
+                'debug',debug_huwacb,'YNORMALIZE',y_normalize);
+            else
+                [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+                = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
+                'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+                'Z0',Z,'D0',D,'X0',X,'R0',RR,...
+                'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
+                'precision',precision,'gpu',gpu,'Concavebase',C,...
+                'debug',debug_huwacb,'YNORMALIZE',y_normalize);
+            end
         end
     else
         if batch
-           [ X,Z,~,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,logYif,C,...
-              'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
-              'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
-              'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
-              'PRECISION',precision,'Tcond',Tcond);
+            if ffc_mode
+                [ X,Z,~,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,logYif-logt_est,C,...
+                  'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
+                  'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+                  'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+                  'PRECISION',precision,'Tcond',Tcond,'YNORMALIZE',y_normalize);
+            else
+               [ X,Z,~,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,logYif,C,...
+                  'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
+                  'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+                  'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+                  'PRECISION',precision,'Tcond',Tcond,'YNORMALIZE',y_normalize);
+            end
         else
-            [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
-            = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
-            'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
-            'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
-            'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
-            'precision',precision,'gpu',gpu,'Concavebase',C,...
-            'debug',debug_huwacb);
+            if ffc_mode
+                [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+                = huwacbl1_admm_gat_a(A,logYif-logt_est,WA,'LAMBDA_A',lambda_a_2,...
+                'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+                'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+                'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+                'precision',precision,'gpu',gpu,'Concavebase',C,...
+                'debug',debug_huwacb,'YNORMALIZE',y_normalize);
+            else
+                [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+                = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
+                'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+                'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+                'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+                'precision',precision,'gpu',gpu,'Concavebase',C,...
+                'debug',debug_huwacb,'YNORMALIZE',y_normalize);
+            end
         end
     end
     % toc;
@@ -546,6 +657,9 @@ for n=2:nIter
         Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
     else
         Ymdl = A*X + C*Z;
+    end
+    if ffc_mode
+        Ymdl = Ymdl + logT;
     end
     RR = logYif - Ymdl;
     
@@ -594,10 +708,16 @@ for n=2:nIter
     resNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
     % update logt_est
-    if batch
-        RR  = RR + pagefun(@mtimes,A(:,1,:),X(1,:,:));
+    if ffc_mode
+        RR = RR + logT;
+        Xtc = ones(1,L,S,precision,gpu_varargin);
     else
-        RR  = RR + A(:,1)*X(1,:);
+        if batch
+            RR  = RR + pagefun(@mtimes,A(:,1,:),X(1,:,:));
+        else
+            RR  = RR + A(:,1)*X(1,:);
+        end
+        Xtc = X(idxAlogT,:,:);
     end
     if batch
         [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
@@ -614,15 +734,15 @@ for n=2:nIter
     end
     logt_est = permute(logt_est,[2,1,3]);
     if batch
-        RR = RR - pagefun(@mtimes,logt_est,X(1,:,:));
+        RR = RR - pagefun(@mtimes,logt_est,Xtc);
     else
-        RR = RR - logt_est*X(1,:);
+        RR = RR - logt_est*Xtc;
     end
     resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
     % do we need to update lambda here? not sure.
     
-    A(:,1,:) = logt_est;
+    A(:,idxAlogT,:) = logt_est;
     
     switch upper(lambda_update_rule)
         case 'L1SUM'
@@ -642,35 +762,60 @@ end
 % last iteration
 %-------------------------------------------------------------------------%
 if batch
-    [ X,Z,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,...
-        logYif,C,...
-        'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
-        'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
-        'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
-        'PRECISION',precision);
+    if ffc_mode
+        [ X,Z,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,...
+            logYif-logt_est,C,...
+            'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
+            'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
+            'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+            'PRECISION',precision,'YNORMALIZE',y_normalize);
+    else
+        [ X,Z,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,...
+            logYif,C,...
+            'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
+            'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
+            'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+            'PRECISION',precision,'YNORMALIZE',y_normalize);
+    end  
 else
-    [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+    if ffc_mode
+         [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
+            = huwacbl1_admm_gat_a(A,logYif-logt_est,WA,'LAMBDA_A',lambda_a_2,...
+            'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+            'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+            'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+            'precision',precision,'gpu',gpu,'Concavebase',C,...
+            'debug',debug_huwacb,'YNORMALIZE',y_normalize);
+    else
+        [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
             = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
             'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
             'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
             'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
             'precision',precision,'gpu',gpu,'Concavebase',C,...
-            'debug',debug_huwacb);
+            'debug',debug_huwacb,'YNORMALIZE',y_normalize);
+    end
+end
+
+if ffc_mode     
+    Xtc = ones(1,L,S,precision,gpu_varargin);
+else
+    Xtc = X(idxAlogT,:,:);
 end
 
 % substituting all the variables
 if batch
-    logAB        = pagefun(@mtimes,Alib,X((2+Nice):end,:,:));
+    logAB        = pagefun(@mtimes,Alib,X(idxAlib,:,:));
     logBg        = pagefun(@mtimes,C,Z);
-    logIce       = pagefun(@mtimes,Aicelib,X(2:(Nice+1),:,:));
-    logYif_cor   = logYif - pagefun(@mtimes,logt_est,X(1,:,:)) - logIce;
+    logIce       = pagefun(@mtimes,Aicelib,X(idxAice,:,:));
+    logYif_cor   = logYif - pagefun(@mtimes,logt_est,Xtc) - logIce;
 else
-    logAB = Alib*X((2+Nice):end,:);
+    logAB = Alib*X(idxAlib,:);
     logBg = C*Z;
-    logIce = Aicelib*X(2:(Nice+1),:);
-    logYif_cor = logYif - logt_est*X(1,:) - logIce;
+    logIce = Aicelib*X(idxAice,:);
+    logYif_cor = logYif - logt_est*Xtc - logIce;
 end
-logt_est     = A(:,1,:);
+% logt_est     = A(:,idx,:);
 logYif_cor(logYif_isnan) = nan;
 
 if batch
@@ -679,9 +824,9 @@ if batch
 else
 end
 
-Xt           = X(1,:,:);
-Xice         = X(2:(Nice+1),:,:);
-Xlib         = X((Nice+2):(Nlib+Nice+1),:,:);
+Xt           = Xtc;
+Xice         = X(idxAice,:,:);
+Xlib         = X(idxAlib,:,:);
 
 end
 

@@ -634,10 +634,10 @@ switch t_mode
     case {4}
         sclk_img = (TRRIFdata.get_sclk_start()+TRRIFdata.get_sclk_stop())/2;
         [ at_trans ] = load_T_sclk_closest(sclk_img,varargin_T{:});
-        at_trans = bin_image_frames(at_trans,'binning',propWA.binning);
+        at_trans = bin_image_frames(at_trans,'binning',WAdata.prop.binning);
     case {5}
         [ at_trans ] = load_T_given( obs_id_T,varargin_T{:});
-        at_trans = bin_image_frames(at_trans,'binning',propWA.binning);
+        at_trans = bin_image_frames(at_trans,'binning',WAdata.prop.binning);
     otherwise
         error('Undefined t_mode %d',t_mode);
 end
