@@ -10,15 +10,25 @@ function [result] = sabcondv3_pub_water_ice_test(obs_id,opt_icelib,varargin)
 %       index id for ice library to be used.
 % OUTPUT Parameters
 %   result: struct, storing result of the test.
-%     *fields*
-%      water_ice_result:
-%      water_ice_exist:
-%      Xice_mean_insig:
-%      Xice_map:
-%      insig_map:
-%      columns:
-%      bands:
-%      lines:
+%     *fields* (C indicates column, L indicates lines, )
+%      'presence_H2Oice' : boolean, 
+%           true if test is true and false otherwise
+%      'presence_H2Oice_columns' : boolean array [1 C]
+%           whether or not Xice_column_mean_bland is greater than 
+%           THRESHOLD_ICE_ABUNDANCE
+%      'Xice_column_mean_bland' : array [1,C], 
+%           column mean of H2O ice abundances of bland spectra
+%      'Xice_map' : 2d array [L C], 
+%           map of total H2O ice abundances
+%      'map_bland' : 2d boolean array [L C], 
+%           map of bland spectra
+%      'non_bland_mode: boolean,
+%           whether or not only bland spectra are used for test
+%           true if all spectra are used, false only bland spectra are used
+%
+%      'columns' : integer array, column indexes used for this test
+%      'bands'   : integer array, bands used for processing
+%      'lines'   : integer array, lines used for processing
 %
 % OPTIONAL Parameters
 %   'THRESHOLD_BLAND': scalar
@@ -39,8 +49,8 @@ function [result] = sabcondv3_pub_water_ice_test(obs_id,opt_icelib,varargin)
 %       'nIter'             : 0
 %       'COLUMN_SKIP'       : 50
 
-threshold_insig_logAB_bprmvd = 0.5;
-threshold_Xice = 0.1;
+threshold_bland = 0.5;
+threshold_Xice  = 0.1;
 threshold_ice_dominance = 0.8;
 column_skip = 50;
 
@@ -53,7 +63,7 @@ else
         switch upper(varargin{i})
             % ## THRESHOLDS #----------------------------------------------
             case 'THREHOLD_BLAND'
-                threshold_insig_logAB_bprmvd = varargin{i+1};
+                threshold_bland = varargin{i+1};
                 idx_varargin_rmvl = [idx_varargin_rmvl i i+1];
             case 'THRESHOLD_ICE_ABUNDANCE'
                 threshold_Xice = varargin{i+1};
@@ -65,7 +75,7 @@ else
     end
 end
 
-idx_varargin_retained = setdiff(length(varargin),idx_varargin_rmvl);
+idx_varargin_retained = setdiff(1:length(varargin),idx_varargin_rmvl);
 varargin = varargin(idx_varargin_retained);
 
 [out] = sabcondv3_pub(obs_id,'OPT_ICELIB',opt_icelib,...
@@ -73,33 +83,45 @@ varargin = varargin(idx_varargin_retained);
     'Alib_out', true,'nIter',0,'COLUMN_SKIP',column_skip,varargin{:});
 
 % select bland spectra
-idx_insig = abs(sum(log(out.AB_est(:,:,out.bands),3))) ...
-                                     < threshold_insig_logAB_bprmvd;
-
+map_bland = abs(sum(log(out.AB_est(:,:,out.bands)),3)) < threshold_bland;
+%
+map_bland_1nan = convertBoolTo1nan(map_bland);
 % amount of ice
-Xice = cat(3,out.ancillaries.Xice);
-Xice = reshape(Xice,[2,3,1]);
-Xice_map = sum(Xice,3);
-Xice_mean_insig = mean(Xice_map(idx_insig));
-
-water_ice_exist = Xice_mean_insig > threshold_Xice;
-
-if nanmean(water_ice_exist) > threshold_ice_dominance
-    water_ice_result = 1;
+Xice_map = nan(length(out.lines),length(out.columns));
+for i=1:length(out.columns)
+    if ~isempty(out.ancillaries(i).Xice)
+        Xice_map(:,i) = sum(out.ancillaries(i).Xice,1);
+    end
+end
+Xice_column_mean_bland = nanmean(Xice_map.*map_bland_1nan,1);
+columns_not_consider = all(isnan(map_bland_1nan),1);
+if all(columns_not_consider)
+    fprintf('No bland spectra are detected on selected columns.\n');
+    fprintf('Test will be performed on non-bland spectra\n');
+    non_bland_mode = true;
+    Xice_column_mean_bland = nanmean(Xice_map,1);
+    columns_not_consider = all(isnan(Xice_map),1);
 else
-    water_ice_result = 0;
+    non_bland_mode = false;
 end
 
+Xice_column_mean_bland(columns_not_consider) = nan;
+
+presence_H2Oice_columns = double(Xice_column_mean_bland > threshold_Xice);
+presence_H2Oice_columns(columns_not_consider) = nan;
+
+presence_H2Oice = nanmean(presence_H2Oice_columns,2) > threshold_ice_dominance;
 
 result = [];
-result.water_ice_result = water_ice_result;
-result.water_ice_exist  = water_ice_exist;
-result.Xice_mean_insig  = Xice_mean_insig;
+result.presence_H2Oice         = presence_H2Oice;
+result.presence_H2Oice_columns = presence_H2Oice_columns;
+result.Xice_column_mean_bland  = Xice_column_mean_bland;
 result.Xice_map         = Xice_map;
-result.insig_map        = idx_insig;
+result.map_bland        = map_bland;
 result.columns          = out.columns;
 result.bands            = out.bands;
 result.lines            = out.lines;
+result.non_bland_mode   = non_bland_mode;
 
 
 end
