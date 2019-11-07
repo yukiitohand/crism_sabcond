@@ -98,6 +98,24 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'PRECISION': {'single','doulbe'}
 %        data type used for calculation
 %        (default) 'double'
+%  ## WEIGHT PARAMETERS #--------------------------------------------------
+%   'WEIGHT_MODE': integer {0,1}
+%       mode id of weight option. 0 for uniform weight, 1 for weight based
+%       on noise estimation.
+%       (default) 0
+%   ********PARAMETERS BELOW ARE ONLY REQUIRED FOR 'WEIGHT_MODE'=0*********
+%   'STDL1_IFDF': array, [ B x 1 x S]
+%       median absolute deviation for median calculated from DF.
+%       (default) []
+%   'SFIMG': array, [ B x 1 x S]
+%       sunflux image from CDR
+%       (default) []
+%   'WA_um_pitch': array, [ B x 1 x S]
+%       wavelength pitch for each channel in micron unit.
+%       (default) []
+%   'LBL': struct
+%       CRISM pds lbl struct
+%       (default) []
 
 %% GET SIZE
 [B,L,S]    = size(logYif);
@@ -109,6 +127,12 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 Aicelib   = [];
 nIter     = int32(5);
 th_badspc = 0.8;
+% ## WEIGHT PARAMETERS #---------------------------------------------------
+weight_mode = [];
+stdl1_ifd   = [];
+SFimg       = [];
+WA_um_pitch = [];
+lbl         = [];
 % ## HUWACB PARAMETERS #---------------------------------------------------
 lambda_a       = 0.01;
 lambda_a_ice   = 0;
@@ -138,6 +162,19 @@ else
                 nIter = varargin{i+1};
             case 'THRESHOLD_BADSPC'
                 th_badspc = varargin{i+1};
+                
+            % ## WEIGHT PARAMETERS #---------------------------------------
+            case 'WEIGHT_MODE'
+                weight_mode = varargin{i+1};
+            case 'STDL1_IFDF'
+                stdl1_ifdf = varargin{i+1};
+            case 'SFIMG'
+                SFimg = varargin{i+1};
+            case 'WA_UM_PITCH'
+                WA_um_pitch = varargin{i+1};
+            case 'LBL'
+                lbl = varargin{i+1};
+            
             % ## HUWACB PARAMETERS #---------------------------------------
             case 'LAMBDA_A'
                 lambda_a = varargin{i+1};
@@ -218,6 +255,7 @@ logYif(logYif_isnan) = 0;
 for i=1:S
     logYif(:,:,i) = interp_nan_column(logYif(:,:,i),logYif_isnan(:,:,i),WA(:,i));
 end
+
 % toc;
 
 if batch
@@ -230,7 +268,11 @@ if batch
     logYif_isnan = gpuArray(logYif_isnan);
     logYif_isnan_ori = gpuArray(logYif_isnan_ori);
     badspc = gpuArray(badspc);
+    stdl1_ifdf   = gpuArray(stdl1_ifdf);
+    SFimg       = gpuArray(SFimg);
+    WA_um_pitch = gpuArray(WA_um_pitch);
 end
+Yif = exp(logYif);
 
 %%
 %-------------------------------------------------------------------------%
@@ -264,7 +306,26 @@ end
 % lambda_r = ones(B,L,S,precision);
 lambda_c = zeros(B,L,S,precision,gpu_varargin{:});
 lambda_a_2 = zeros(Nlib+Nice+Ntc,L,S,precision,gpu_varargin{:});
-lambda_r = ones(B,L,S,precision,gpu_varargin{:});
+
+switch weight_mode
+    case 0
+        lambda_r = ones(B,L,S,precision,gpu_varargin{:});
+    case 1
+        % compute weight
+        mYif = nanmean(Yif,2);
+        if batch
+            mYif1 = pagefun(@mtimes,pagefun(@transpose,mYif),Yif)./ sum(mYif.^2,1);
+            Ymdl = pagefun(@mtimes,mYif,mYif1);
+        else
+            mYif1 = mYif'*Yif/norm(mYif,2)^2;
+            Ymdl = mYif*mYif1;
+        end
+        RDimg = if2rd(Ymdl,SFimg,lbl);
+        [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
+                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+        %
+        lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)/(B*20);
+end
 
 lambda_a_2((1+Ntc):(Ntc+Nice),:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
 lambda_a_2((1+Ntc+Nice):end,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
@@ -298,21 +359,48 @@ end
 
 % evaluate bad pixels
 if batch
-    RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
+    Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
 else
-    RR = logYif - A*X - C*Z;
+    Ymdl = A*X + C*Z;
 end
-RR_std = nanstd(RR,[],2);
-logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.1 );
-logYif_isnan = or(logYif_isnan,RR_std>0.015);
-% finally flag spectra that have too many bad channels.
-badspc = (sum(logYif_isnan,1)/B) > th_badspc;
-logYif_isnan = or(logYif_isnan,badspc);
+RR = logYif - Ymdl;
+
+% ## denoising ##----------------------------------------------------------
+switch weight_mode
+    case 0
+        RR_std = nanstd(RR,[],2);
+        logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.1 );
+        logYif_isnan = or(logYif_isnan,RR_std>0.015);
+        % finally flag spectra that have too many bad channels.
+        badspc = (sum(logYif_isnan,1)/B) > th_badspc;
+        logYif_isnan = or(logYif_isnan,badspc);
+        lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
+        
+    case 1
+        RDimg = if2rd(Ymdl,SFimg,lbl);
+        [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
+                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+        mad_bprmvd_rr1_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
+        res_exp1 = Yif - Ymdl;
+        mad_bprmvd_rr1_prac = robust_v3('med_abs_dev_from_med',res_exp1,2,'NOutliers',10);
+        mad_bprmvd_log1 = robust_v3('med_abs_dev_from_med',RR,2,'NOutliers',10);
+        mad_bprmvd_rr1 = max(mad_bprmvd_rr1_theor,mad_bprmvd_rr1_prac);
+        
+        logYif_isnan_bp = false(size(Ymodel_bprmvd));
+        bp_est_bool = and(mad_bprmvd_rr1>0.0015,mad_bprmvd_log1>0.005);
+        logYif_isnan_bp(bp_est_bool,:) = true;
+        logYif_isnan = or(logYif_isnan_bp,logYif_isnan_ori);
+        
+        badspc = (sum(logYif_isnan,1)/B) > th_badspc;
+        
+end
 
 
 lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
 lambda_c([1,Nc],:,:) = 0; % safeguard
-lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
+
+%--------------------------------------------------------------------------
+
 
 resNrm = nansum(abs(RR).* lambda_r,[1,2]);
 
@@ -342,6 +430,30 @@ if batch
 else
     RR = RR - logt_est*Xtc;
 end
+
+switch weight_mode
+    case 0
+
+    case 1
+        if batch
+            Ymdl = Ymdl - pagefun(@mtimes,logT,X(1:Ntc,:,:)) ...
+                + pagefun(@mtimes,logt_est,Xtc);
+        else
+            Ymdl = Ymdl - logT*X(1:Ntc,:,:) + logt_est*Xtc;
+        end
+        RDimg = if2rd(Ymdl,SFimg,lbl);
+        [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
+                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+        mad_bprmvd_rr1_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
+        res_exp1 = Yif - Ymdl;
+        mad_bprmvd_rr1_prac = robust_v3('med_abs_dev_from_med',res_exp1,2,...
+            'NOutliers',10);
+        mad_bprmvd_rr1 = max(mad_bprmvd_rr1_theor,mad_bprmvd_rr1_prac);
+        
+        lambda_r = 1./mad_bprmvd_rr1.*(Ymdl)./((L_bprmvd-sum(bp_est_bool))*20);
+        lambda_r(logYifc_bprmvd_isnan) = 0;
+end
+
 resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
 
 %%

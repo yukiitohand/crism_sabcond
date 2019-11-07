@@ -145,6 +145,10 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'COLUMN_SKIP: integer
 %       the stride for which processing columns will be skipped.
 %       (default) 1
+%   'WEIGHT_MODE': integer {0,1}
+%       mode id of weight option. 0 for uniform weight, 1 for weight based
+%       on noise estimation.
+%       (default) 0
 %
 %  ## TRANSMISSION SPECTRUM OPTIONS #--------------------------------------
 %    'T_MODE': integer
@@ -228,6 +232,7 @@ mt           = 'sabcondpub_v1';        % METHODTYPE
 optBP        = 'pri';                  %{'pri','all','none'}
 verbose      = 0;
 column_skip  = 1;
+weight_mode  = 0;
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 t_mode = 2;
@@ -300,6 +305,8 @@ else
                 verbose = varargin{i+1};
             case 'COLUMN_SKIP'
                 column_skip = varargin{i+1};
+            case 'WEIGHT_MODE'
+                weight_mode = varargin{i+1};
                 
             % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------
             case 'T_MODE'
@@ -405,7 +412,7 @@ switch upper(opt_img)
         basename_cr = [crism_obs.info.basenameIF suffix];
     case 'RA_IF'
         basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
-    case {'TRRY','TRRB','TRRC'}
+    case {'TRRY','TRRB','TRRC','TRRD'}
         prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
         prop.version = opt_img(4);
         basenameTRRY = get_basenameOBS_fromProp(prop);
@@ -469,10 +476,12 @@ switch upper(opt_img)
     case 'RA_IF'
         TRRRAIFdata = CRISMdataCAT([crism_obs.info.basenameRA '_IF'],crism_obs.info.dir_trdr,'ra_if');
         Yif = TRRRAIFdata.readimgi();
-    case {'TRRY','TRRB','TRRC'}
+        
+    case {'TRRY','TRRB','TRRC','TRRD'}
         d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
         TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
         Yif = TRRYIFdata.readimgi();
+        
     otherwise
         error('opt_img = %s is not defined',opt_img);
 end
@@ -512,6 +521,78 @@ switch lower(optBP)
 end
 
 BP = (BP1nan==1); GP = (GP1nan==1);
+
+%% Weight mode
+switch weight_mode
+    case 0
+        stdl1_ifdf  = zeros(nB,1,nCall,0);
+        WA_um_pitch = zeros(nB,1,nCall,0);
+        SFimg       = zeros(nB,1,nCall,0);
+    case 1
+        %% compute the weight for each dimension
+        switch TRRIFdata.lbl.OBSERVATION_TYPE
+            case {'FRT','HRL','HRS','FFC'}
+                Noutliers = 4;
+            case {'FRS','ATO'}
+                Noutliers = 2;
+            otherwise
+                error('Please define for other cases')
+        end
+        % load processed dark files
+        propDF1_IF = DFdata1.prop;
+        propDF1_IF.activity_id = 'IF';
+        propDF1_IF.product_type = 'TRR';
+        propDF1_IF.version = trr_vr;
+        bnameDF1_IF = get_basenameOBS_fromProp(propDF1_IF);
+        load(joinPath(d_yuk_trr,[bnameDF1_IF '.mat']),'IoF_bk1_o');
+        IoF_bk1_o = flip(IoF_bk1_o,3);
+        IoF_bk1_o = permute(IoF_bk1_o,[3,1,2]);
+        switch TRRIFdata.lbl.OBSERVATION_TYPE
+            case {'FRT','HRL','HRS','FFC'}
+                propDF2_IF = DFdata2.prop;
+                propDF2_IF.activity_id = 'IF';
+                propDF2_IF.product_type = 'TRR';
+                propDF2_IF.version = trr_vr;
+                bnameDF2_IF = get_basenameOBS_fromProp(propDF2_IF);
+                load(joinPath(d_yuk_trr,[bnameDF2_IF '.mat']),'IoF_bk2_o');
+                IoF_bk2_o = flip(IoF_bk2_o,3);
+                IoF_bk2_o = permute(IoF_bk2_o,[3,1,2]);
+            case {'FRS','ATO'}
+                IoF_bk2_o = [];
+            otherwise
+                error('Please define for other cases')
+        end
+
+        stdl1_ifdf = nan(size(GP));
+        ifdfImage = cat(2,IoF_bk1_o,IoF_bk2_o);
+        for cd = 1:nCall
+            ifdfimagec = ifdfImage(bands,:,cd);
+            % std_df = robust_v3('stdl1',ifdfimagec,2,'NOutliers',Noutliers);
+            std_df = robust_v3('med_abs_dev_from_med',ifdfimagec,2,'NOutliers',Noutliers);
+            stdl1_ifdf(:,:,cd) = std_df(:);
+        end
+        
+        % read SFdata
+        switch upper(opt_img)
+            case {'IF','RA_IF','TRRY','TRRB'}
+                SFdata = TRRIFdata.readCDR('SF');
+
+            case {'TRRC','TRRD'}
+                SFdata = TRRIFdata.readCDR('SF');
+
+            otherwise
+                error('opt_img = %s is not defined',opt_img);
+        end
+            
+        % Estimate the amount of photon noise
+        [WA_um_pitch] = get_WA_um_pitch_CRISM(WAdata);
+        WA_um_pitch = permute(WA_um_pitch(:,:,bands),[3,1,2]);
+        SFimg = SFdata.readimgi();
+        SFimg = permute(SFimg(:,:,bands),[3,1,2]);
+    otherwise
+        error('Undefined weight mode: %d',weight_mode);
+end
+    
 
 %% read ADR transmission data
 switch t_mode
@@ -655,7 +736,6 @@ switch upper(PROC_MODE)
             ancillaries(c).Xice = Xice_c;
             Valid_pixels(lBool,c) = vldpxl_c';
             
-
             toc;
         end
 
@@ -728,16 +808,33 @@ switch upper(PROC_MODE)
                 Alibs = single(Alibs); Aicelibs = single(Aicelibs);
             end
             tic;
-            [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
-                AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
-                Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns)]...
-            = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
-                      logT_extrap(:,:,Columns),...
-                      BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
-                      'Aicelib',Aicelibs,'nIter',nIter,...
-                      'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
-                      'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
-                      'gpu',gpu);
+            switch weight_mode
+                case 0
+                    [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
+                        AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
+                        Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns)]...
+                    = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
+                              logT_extrap(:,:,Columns),...
+                              BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
+                              'Aicelib',Aicelibs,'nIter',nIter,...
+                              'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                              'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                              'gpu',gpu,'WEIGHT_MODE',weight_mode);
+                case 1
+                    [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
+                        AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
+                        Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns)]...
+                    = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
+                              logT_extrap(:,:,Columns),...
+                              BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
+                              'Aicelib',Aicelibs,'nIter',nIter,...
+                              'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                              'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                              'gpu',gpu,...
+                              'WEIGHT_MODE',weight_mode,...
+                              'STDL1_IFDF',stdl1_ifdf(:,:,Columns),'SFIMG',SFimg(:,:,Columns),...
+                              'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl);
+            end
             switch upper(PROC_MODE)
                 case {'GPU_BATCH_2'}
                 Yif_cor_ori(bBool,lBool,Columns)...
@@ -824,6 +921,7 @@ fprintf(fid,'METHODTYPE: %s\n',mt);
 fprintf(fid,'OPTBP: %s\n',optBP);
 fprintf(fid,'VERBOSE: %d\n', verbose);
 fprintf(fid,'COLUMN_SKIP: %d\n',column_skip);
+fprintf(fid,'WEIGHT_MODE: %d\n',weight_mode);
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 fprintf(fid,'T_MODE: %d\n', t_mode);
