@@ -1,8 +1,8 @@
 function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,...
-    ancillary,vldpxl]...
+    Xt,Xlib,Xice,vldpxl]...
     = sabcondc_v3l1_pub( Alib,logYifc,wvc,logtc,gp,varargin )
 % [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,...
-%    ancillary,vldpxl]...
+%    Xt,Xlib,Xice,vldpxl]...
 %    = sabcondc_v3l1_pub( Alib,logYifc,wvc,logtc,gp,varargin )
 % Perfrom atmospheric and de-noising of CRISM data with Algorithm 1 (bad
 % entries are replaced with model values at each iteration).
@@ -34,13 +34,12 @@ function [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan
 %       corrected i/f spectra (bad entries are also processed)
 %   logYifc_isnan: boolean array, [B x L]
 %       bad entries are flagged.
-%   ancillary: ancillary information
-%       Field contains
-%           Xt: [1 x L] estimated path lengh parameters
-%           Xlib: [Nlib x L] estimated abundances associated with library
-%                 Alib.
-%           Xice: [Nice x L] estimated abundances associated with library
-%                 Aicelib.
+%   Xt: [1 x L]
+%       estimated path length matrix
+%   Xlib: [Nlib x L]
+%       estimated abundance matrix associated with lib
+%   Xice: [Nice x L]
+%       estimated coefficients associated with Aicelib
 %   vldpxl: boolean array, [1 x L]
 %       flag if the spectra has sufficiently a small number of bad entries
 %       (<THREHOLD_BADSPC)
@@ -377,9 +376,8 @@ logBg = interp_nan_column(logBg,logYifc_isnan,wvc);
 
 vldpxl = (sum(logYifc_bprmvd_isnan,1)/B_bprmvd) < th_badspc;
 
-ancillary = [];
-ancillary.Xt   = X(1,:);
-ancillary.Xlib = X(idxAlib,:);
-ancillary.Xice = X(idxAice,:);
+Xt   = X(1,:);
+Xlib = X(idxAlib,:);
+Xice = X(idxAice,:);
 
 end

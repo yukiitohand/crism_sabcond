@@ -498,10 +498,12 @@ switch lower(optBP)
         [BP1nan] = formatBPpri1nan(BPdata1,BPdata2,'band_inverse',true);
         [GP1nan] = convertBP1nan2GP1nan(BP1nan);
         GP1nan = permute(GP1nan(bands,:,:),[1,3,2]);
+        BP1nan = permute(BP1nan(bands,:,:),[1,3,2]);
     case 'all'
         [BP1nan] = formatBP1nan(BPdata_post,'band_inverse',true);
         [GP1nan] = convertBP1nan2GP1nan(BP1nan);
         GP1nan = permute(GP1nan(bands,:,:),[1,3,2]);
+        BP1nan = permute(BP1nan(bands,:,:),[1,3,2]);
     case 'none'
         GP1nan = double(true(nB,1,nCall));
         BP1nan = nan(nB,1,nCall);
@@ -600,7 +602,7 @@ switch upper(PROC_MODE)
         ancillaries = struct('Xt',cell(nCall,1),'Xlib',cell(nCall,1),...
                              'Xice',cell(nCall,1),...
                              'Alib',cell(nCall,1),'Aicelib',cell(nCall,1),...
-                             'infoAlib',cell(nCall,1),'infoAicelib',cel(nCall,1));
+                             'infoAlib',cell(nCall,1),'infoAicelib',cell(nCall,1));
         Yif_cor_ori = nan([nLall,nCall,nBall],precision);
         Valid_pixels = false([nLall,nCall]);
         
@@ -632,7 +634,7 @@ switch upper(PROC_MODE)
                 Alib = single(Alib); Aicelib = single(Aicelib);
             end
 
-            [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,ancillary,vldpxl_c]...
+            [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,Xt_c,Xlib_c,Xice_c,vldpxl_c]...
                 = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WAb(:,c),logT_extrap(:,:,c),GP(:,:,c),...
                   'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
                   'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
@@ -648,7 +650,9 @@ switch upper(PROC_MODE)
             if ~isempty(opticelib)
                 Ice_est(lBool,c,bBool) = reshape(logIce',[nL,1,nB]);
             end
-            ancillaries(c) = ancillary;
+            ancillaries(c).Xt = Xt_c;
+            ancillaries(c).Xlib = Xlib_c;
+            ancillaries(c).Xice = Xice_c;
             Valid_pixels(lBool,c) = vldpxl_c';
             
 
@@ -675,7 +679,7 @@ switch upper(PROC_MODE)
         ancillaries = struct('Xt',cell(nCall,1),'Xlib',cell(nCall,1),...
                              'Xice',cell(nCall,1),...
                              'Alib',cell(nCall,1),'Aicelib',cell(nCall,1),...
-                             'infoAlib',cell(nCall,1),'infoAicelib',cel(nCall,1));
+                             'infoAlib',cell(nCall,1),'infoAicelib',cell(nCall,1));
         n_batch = ceil(length(Columns_valid)/batch_size);
         
         for ni = 1:n_batch
