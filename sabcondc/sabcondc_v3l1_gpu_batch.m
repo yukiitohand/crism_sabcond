@@ -411,16 +411,18 @@ end
 
 % evaluate bad pixels
 if batch
-    Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
+    % Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
+    RR   = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
 else
-    Ymdl = A*X + C*Z;
+    % Ymdl = A*X + C*Z;
+    RR = logYif - A*X - C*Z;
 end
 
 if ffc_mode
     Ymdl = Ymdl + logT;
 end
 
-RR = logYif - Ymdl;
+% RR = logYif - Ymdl;
 
 % ## denoising ##----------------------------------------------------------
 switch weight_mode
@@ -653,14 +655,16 @@ for n=2:nIter
     % toc;
     % evaluate bad pixels
     if batch
-        Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
+        % Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
+        RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
     else
-        Ymdl = A*X + C*Z;
+        % Ymdl = A*X + C*Z;
+        RR = logYif - A*X - C*Z;
     end
     if ffc_mode
         Ymdl = Ymdl + logT;
     end
-    RR = logYif - Ymdl;
+    %RR = logYif - Ymdl;
     
     % ## denoising ##------------------------------------------------------
     switch weight_mode
