@@ -422,11 +422,12 @@ switch weight_mode
         RR_std = nanstd(RR,[],2);
         % noticed this de-noising is slightly different from the one in
         % sabcondc_v3l1_pub.m
-        % I think the below one is the one I wanted to try...
-        % logYif_isnan = or(logYif_isnan_ori,and(abs(RR)>0.1,RR_std>0.015));
+        % I think the below one is the one I wanted to try...now restored.
+        logYif_isnan = or(logYif_isnan_ori,and(abs(RR)>0.1,RR_std>0.015));
         %
-        logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.1 );
-        logYif_isnan = or(logYif_isnan,RR_std>0.015);
+        %
+        % logYif_isnan = or( logYif_isnan_ori, abs(RR)>0.1 );
+        % logYif_isnan = or(logYif_isnan,RR_std>0.015);
         
         % finally flag spectra that have too many bad channels.
         badspc = (sum(logYif_isnan,1)/B) > th_badspc;
