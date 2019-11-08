@@ -411,18 +411,10 @@ end
 
 % evaluate bad pixels
 if batch
-    % Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
     RR   = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
 else
-    % Ymdl = A*X + C*Z;
     RR = logYif - A*X - C*Z;
 end
-
-if ffc_mode
-    Ymdl = Ymdl + logT;
-end
-
-% RR = logYif - Ymdl;
 
 % ## denoising ##----------------------------------------------------------
 switch weight_mode
@@ -442,7 +434,20 @@ switch weight_mode
         lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
         
     case 1
-        Ymdl = exp(Ymdl);
+        if ffc_mode
+            if batch
+                Ymdl = exp(pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z) + logT);
+            else
+                Ymdl = exp(A*X + C*Z + logT);
+            end
+        else
+            if batch
+                Ymdl = exp(pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z));
+            else
+                Ymdl = exp(A*X + C*Z);
+            end
+        end
+        
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
                                         RDimg,WA,WA_um_pitch,lbl,SFimg);
@@ -566,7 +571,8 @@ end
 
 switch upper(lambda_update_rule)
     case 'L1SUM'
-        lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
+        lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
+        lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
     case 'MED'
         error('not implemented yet');
     case 'NONE'
@@ -655,16 +661,10 @@ for n=2:nIter
     % toc;
     % evaluate bad pixels
     if batch
-        % Ymdl = pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z);
         RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
     else
-        % Ymdl = A*X + C*Z;
         RR = logYif - A*X - C*Z;
     end
-    if ffc_mode
-        Ymdl = Ymdl + logT;
-    end
-    %RR = logYif - Ymdl;
     
     % ## denoising ##------------------------------------------------------
     switch weight_mode
@@ -674,7 +674,20 @@ for n=2:nIter
             logYif_isnan = or(logYif_isnan,badspc);
             lambda_r(logYif_isnan) = 0; lambda_r(~logYif_isnan) = 1;
         case 1
-            Ymdl = exp(Ymdl);
+            if ffc_mode
+                if batch
+                    Ymdl = exp(pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z) + logt_est);
+                else
+                    Ymdl = exp(A*X + C*Z + logt_est);
+                end
+            else
+                if batch
+                    Ymdl = exp(pagefun(@mtimes,A,X) + pagefun(@mtimes,C,Z));
+                else
+                    Ymdl = exp(A*X + C*Z);
+                end
+            end
+            
             RDimg = if2rd(Ymdl,SFimg,lbl);
             [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
                                         RDimg,WA,WA_um_pitch,lbl,SFimg);
@@ -716,11 +729,11 @@ for n=2:nIter
         Xtc = ones(1,L,S,precision,gpu_varargin);
     else
         if batch
-            RR  = RR + pagefun(@mtimes,A(:,1,:),X(1,:,:));
+            RR  = RR + pagefun(@mtimes,A(:,idxAlogT,:),X(idxAlogT,:,:));
         else
-            RR  = RR + A(:,1)*X(1,:);
+            RR  = RR + A(:,idxAlogT)*X(idxAlogT,:);
         end
-        %Xtc = X(idxAlogT,:,:);
+        Xtc = X(idxAlogT,:,:);
     end
     if batch
         [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
@@ -737,11 +750,9 @@ for n=2:nIter
     end
     logt_est = permute(logt_est,[2,1,3]);
     if batch
-        RR = RR - pagefun(@mtimes,logt_est,X(1,:,:));
-        % RR = RR - pagefun(@mtimes,logt_est,Xtc);
+        RR = RR - pagefun(@mtimes,logt_est,Xtc);
     else
-        RR = RR - logt_est*X(1,:);
-        % RR = RR - logt_est*Xtc;
+        RR = RR - logt_est*Xtc;
     end
     resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
@@ -751,7 +762,8 @@ for n=2:nIter
     
     switch upper(lambda_update_rule)
         case 'L1SUM'
-            lambda_a_2(2:end,:,:) = lambda_a_2(2:end,:,:) .* resNewNrm ./ resNrm;
+            lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
+            lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
         case 'MED'
             error('not implemented yet');
         case 'NONE'
