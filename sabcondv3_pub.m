@@ -402,6 +402,16 @@ if gpu
     end
 end
 
+% determine batch size for each PROC_MODE----------------------------------
+switch upper(PROC_MODE)
+    case {'CPU_2','GPU_2'}
+        batch_size = 1;
+    case {'GPU_BATCH_2'}
+        
+    otherwise
+        error('Undefined PROC_MODE=%s',PROC_MODE);
+end
+
 %% Read image and ancillary data and format them for processing
 crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
 switch upper(crism_obs.info.obs_classType)
