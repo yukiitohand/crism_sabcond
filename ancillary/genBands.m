@@ -8,7 +8,7 @@ switch bands_opt
     case 4
         bands = [4:244]';
     case 5
-        bands = [4:255];
+        bands = [4:252];
     case 6
         bands = [4:250];
     otherwise

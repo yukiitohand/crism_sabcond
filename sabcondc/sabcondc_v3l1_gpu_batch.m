@@ -1,4 +1,4 @@
-function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc]...
+function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc,bp_est_bool]...
     = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
 % [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc]...
 %     = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
@@ -22,7 +22,7 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 % OUTPUT PARAMETERS
 %   logt_est: array, [B x 1 x S]
 %       estimated transmission spectrum
-%   logYifc_cor: array, [B x L x S]
+%   logYif_cor: array, [B x L x S]
 %       corrected i/f spectra
 %   logAB: array, [B x L x S]
 %       estimated absorption spectra
@@ -59,6 +59,9 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'FFC_MODE': boolean,
 %       if true, path length is fixed to one.
 %       (default) false
+%   'BANDS_BIAS_MAD': array, [B x 1]
+%       median absolute deviation of calibration bias for each band
+%       (default) zeros(B,1)
 %  ## HUWACB PARAMETERS #--------------------------------------------------
 %   'LAMBDA_A': scalar,
 %        trade-off parameter, controling sparsity of the coefficients of Alib
@@ -104,6 +107,9 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'PRECISION': {'single','doulbe'}
 %        data type used for calculation
 %        (default) 'double'
+%   'DEBUG': boolean
+%        going into debug mode
+%        (default) false
 %  ## WEIGHT PARAMETERS #--------------------------------------------------
 %   'WEIGHT_MODE': integer {0,1}
 %       mode id of weight option. 0 for uniform weight, 1 for weight based
@@ -124,6 +130,10 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %       (default) []
 
 %% GET SIZE
+% exclude_lib_idx = [658,667,674];
+% Alib_idx2 = setdiff(1:size(Alib,2),exclude_lib_idx);
+% Alib = Alib(:,Alib_idx2);
+
 [B,L,S]    = size(logYif);
 [~,Nlib,~] = size(Alib);
 [~,Ntc,~]  = size(logT);
@@ -135,6 +145,7 @@ nIter     = int32(5);
 th_badspc = 0.8;
 lambda_update_rule = 'L1SUM';
 ffc_mode  = false;
+bands_bias_mad = zeros(B,1);
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = 0;
 stdl1_ifdf  = [];
@@ -144,7 +155,7 @@ lbl         = [];
 % ## HUWACB PARAMETERS #---------------------------------------------------
 lambda_a       = 0.01;
 lambda_a_ice   = 0;
-maxiter_huwacb = int32(100);
+maxiter_huwacb = int32(200);
 tol_huwacb     = 1e-4;
 verbose_huwacb = 'no';
 debug_huwacb   = false;
@@ -157,6 +168,7 @@ debug_lad   = false;
 gpu       = true;
 batch     = S>1;
 precision = 'double';
+is_debug  = false;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -174,6 +186,8 @@ else
                 lambda_update_rule = varargin{i+1};
             case 'FFC_MODE'
                 ffc_mode = varargin{i+1};
+            case 'BANDS_BIAS_MAD'
+                bands_bias_mad = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -215,6 +229,7 @@ else
                 verbose_lad = varargin{i+1};
             case 'DEBUG_LAD'
                 debug_lad = varargin{i+1};
+                
             % ## PROCESSING PARAMETERS #-----------------------------------
             case 'GPU'
                 gpu = varargin{i+1};
@@ -222,6 +237,8 @@ else
                 batch = varargin{i+1};
             case 'PRECISION'
                 precision = varargin{i+1};
+            case 'DEBUG'
+                is_debug = varargin{i+1};
             otherwise
                 error('Unrecognized option: %s',varargin{i});
         end
@@ -234,6 +251,13 @@ switch weight_mode
         y_normalize = true;
     case 1
         y_normalize = false;
+end
+
+if is_debug
+    keyboard; 
+    % exclude_lib_idx = [658,667,674];
+    % Alib_idx2 = setdiff(1:size(Alib,2),exclude_lib_idx);
+    % Alib = Alib(:,Alib_idx2);
 end
 
 %%
@@ -302,7 +326,7 @@ if ffc_mode
     N_A = Nice+Nlib;
     idxAlogT = false(1,N_A);
     idxAice = false(1,N_A); idxAice(1:Nice) = true;
-    idxAlib = false(1,N_A1); idxAlib((Nice+1):N_A) = true;
+    idxAlib = false(1,N_A); idxAlib((Nice+1):N_A) = true;
 else
     A = cat(2,logT,Aicelib,Alib);
     N_A = Ntc+Nice+Nlib;
@@ -335,7 +359,7 @@ end
 % lambda_c = zeros(B,L,S,precision);
 % lambda_a2 = zeros(Nlib+Ntc,L,S,precision);
 % lambda_r = ones(B,L,S,precision);
-lambda_c = zeros(B,L,S,precision,gpu_varargin{:});
+% lambda_c = zeros(B,L,S,precision,gpu_varargin{:});
 if ffc_mode
     lambda_a_2 = zeros(Nice+Nlib,L,S,precision,gpu_varargin{:});
 else
@@ -360,14 +384,24 @@ switch weight_mode
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
                                         RDimg,WA,WA_um_pitch,lbl,SFimg);
         %
+        % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
         lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)/(B*20);
+        lambda_r = lambda_r .* exp(logT);
         lambda_r(logYif_isnan_ori) = 0;
+        bp_bool_ori = all(logYif_isnan_ori,2);
 end
 
+if ffc_mode
+else
+    lambda_a_2(idxAlogT,:,:) = 0.*ones(Ntc,L,S,precision,gpu_varargin{:});
+end
 lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
 lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 
 % 
+% lambda_c_ori = bands_bias_mad./Ymdl;
+lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad)./(Ymdl);
+lambda_c = lambda_c_ori;
 lambda_c(logYif_isnan) = inf;
 lambda_c([1,Nc],:,:) = 0; % safeguard
 
@@ -378,6 +412,7 @@ c2_z(1) = -inf; c2_z(Nc) = -inf;
 
 % main computation
 % tic;
+if is_debug, keyboard; end
 if ffc_mode
     if batch
         [ X,Z,~,D,rho,Rhov,~,~,cost_val]...
@@ -410,10 +445,94 @@ end
 % toc;
 
 % evaluate bad pixels
-if batch
-    RR   = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
+if ffc_mode
+    if batch
+        RR   = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z) - logT;
+    else
+        RR = logYif - A*X - C*Z - logT ;
+    end
 else
-    RR = logYif - A*X - C*Z;
+    if batch
+        RR   = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
+    else
+        RR = logYif - A*X - C*Z;
+    end
+end
+
+if is_debug
+    cols = [     0    0.4470    0.7410;
+            0.8500    0.3250    0.0980;
+            0.9290    0.6940    0.1250;
+            0.4940    0.1840    0.5560;
+            0.4660    0.6740    0.1880;
+            0.3010    0.7450    0.9330;
+            0.6350    0.0780    0.1840;
+                 0         0    1.0000;
+                 0    0.5000         0;
+            1.0000         0         0;
+                 0    0.7500    0.7500;
+            0.7500         0    0.7500;
+            0.7500    0.7500         0;
+            0.2500    0.2500    0.2500];
+    liList = 50;
+    % Get initial transmission spectrum
+    if ffc_mode
+        Xtc = ones(1,L,S,precision,gpu_varargin{:});
+    else
+        Xtc = sum(X(idxAlogT,:,:),1);
+    end
+    logYif_cor_test = logYif - logT * Xtc;
+    ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+    bg = C*Z;
+    ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+    ybad_1nan = convertBoolTo1nan(logYif_isnan);
+    logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+    logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+    
+    figure; ax_tr = subplot(1,1,1); movegui(gcf,'northwest');
+    hold(ax_tr,'on'); 
+    figure; ax_spc = subplot(1,1,1); hold(ax_spc,'off');movegui(gcf,'north');
+    figure; ax_res = subplot(1,1,1); hold(ax_res,'off');movegui(gcf,'northeast');
+    
+    for li=liList
+        plot(ax_spc,exp(logYif(:,li)),'.-','Color',[0.5 0.5 0.5],...
+            'DisplayName','yif');
+        hold(ax_spc,'on');
+        plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(1,:),...
+            'DisplayName','cor iter=0 before t upd');
+        hold(ax_spc,'on');
+        plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(2,:),...
+            'DisplayName','cor good iter=0  before t upd');
+        plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'o','Color',cols(2,:),...
+            'DisplayName','cor bad iter=0  before t upd');
+        plot(ax_spc,exp(ymodel(:,li)),'-','Color',cols(2,:),...
+         'DisplayName','cor model iter=0 before t upd');
+        plot(ax_spc,exp(bg(:,li)),'-','Color',cols(2,:),...
+         'DisplayName','cor bg iter=0 before t upd');
+
+        plot(ax_tr,logT,'.-','Color',cols(1,:),...
+            'DisplayName','t est iter=0 before t upd');
+
+        RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+        hold(ax_res,'off');
+        plot(ax_res,RR);
+        hold(ax_res,'on');
+        plot(ax_res,RR_bad_1nan,'x'); 
+    end
+    drawnow;
+end
+
+%--------------------------------------------------------------------------
+switch upper(lambda_update_rule)
+    case 'L1SUM'
+        resNrm = nansum(abs(RR.* lambda_r),[1,2]);
+    case 'MED'
+        logYif_nisnan_1nan = convertBoolTo1nan(~logYif_isnan);
+        resNrm = nanmedian(abs(lambda_r.*RR .* logYif_nisnan_1nan),[1,2]);
+    case 'NONE'
+        resNrm = 1;
+    otherwise
+        error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
 end
 
 % ## denoising ##----------------------------------------------------------
@@ -458,7 +577,8 @@ switch weight_mode
         mad_log_band = robust_v3('med_abs_dev_from_med',RR,2,'NOutliers',10);
         mad_rr_band = max(mad_rr_band_theor,mad_rr_band_prac);
         
-        bp_est_bool = and(mad_rr_band>0.0015, mad_log_band>0.005);
+        bp_est_bool = or(and(mad_rr_band>0.0015, mad_log_band>0.005),...
+            bp_bool_ori);
         
         logYif_isnan = or(logYif_isnan_ori,bp_est_bool);
         
@@ -470,21 +590,38 @@ switch weight_mode
 
         
         % update lambda_r? not sure.
+        lambda_r(logYif_isnan) = 0;
         
 end
 
-lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
-lambda_c([1,Nc],:,:) = 0; % safeguard
+if is_debug
+    ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+    ybad_1nan = convertBoolTo1nan(logYif_isnan);
+    logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+    logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
-%--------------------------------------------------------------------------
+    for li=liList
+        hold(ax_spc,'on');
+        plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(2,:),...
+            'DisplayName','cor good iter=0  before t upd');
+        plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(2,:),...
+            'DisplayName','cor bad iter=0  before t upd');
+
+        RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+        hold(ax_res,'off');
+        plot(ax_res,RR);
+        hold(ax_res,'on');
+        plot(ax_res,RR_bad_1nan,'x'); 
+    end
+    drawnow;
+end
 
 
-resNrm = nansum(abs(RR).* lambda_r,[1,2]);
 
 % Get initial transmission spectrum
 if ffc_mode
     RR = RR + logT;
-    Xtc = ones(1,L,S,precision,gpu_varargin);
+    Xtc = ones(1,L,S,precision,gpu_varargin{:});
 else
     if batch
         RR  = RR + pagefun(@mtimes,logT,X(idxAlogT,:,:));
@@ -508,6 +645,12 @@ else
 end
 %
 logt_est = permute(logt_est,[2,1,3]);
+
+logt_est(bp_est_bool) = logT(bp_est_bool);
+
+% relaxation
+% logt_est = logT + max(abs(logt_est-logT)./mad_log_band,0) .* logt_est;
+
 if batch
     RR = RR - pagefun(@mtimes,logt_est,Xtc);
 else
@@ -518,27 +661,81 @@ switch weight_mode
     case 0
 
     case 1
-        if batch
-            Ymdl = exp(log(Ymdl) - pagefun(@mtimes,logT,X(idxlogT,:,:)) ...
-                + pagefun(@mtimes,logt_est,Xtc));
+        if ffc_mode
+            Ymdl = Ymdl .* exp(logt_est-logT);
         else
-            Ymdl = exp(log(Ymdl) - logT*X(idxlogT,:,:) + logt_est*Xtc);
+            if batch
+                Ymdl = exp(log(Ymdl) - pagefun(@mtimes,logT,X(idxAlogT,:,:)) ...
+                    + pagefun(@mtimes,logt_est,Xtc));
+            else
+                Ymdl = exp(log(Ymdl) - logT*X(idxAlogT,:,:) + logt_est*Xtc);
+            end
         end
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
                                         RDimg,WA,WA_um_pitch,lbl,SFimg);
         mad_rr_theor = stdl1_ifdf+photon_noise_mad_stdif;
         res_exp = Yif - Ymdl;
+        % mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,...
+        %     'NOutliers',10);
         mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,...
-            'NOutliers',10);
+            'NOutliers',10,'data_center',0);
         
-        lambda_r = 1./max(mad_rr_theor,mad_rr_band_prac).*(Ymdl)./(B*20);
+        % lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad).*(Ymdl)./(B*20);
+        lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)).*(Ymdl)./(B*20);
+        
+        if ffc_mode
+            res_exp_scaled = res_exp./exp(logT);
+        else
+            res_exp_scaled = res_exp./exp(logt_est*X(idxAlogT,:));
+        end
+        logYif_isnan_spk = abs(res_exp_scaled)>0.003; % conservative choice
+        
+        logYif_isnan = or(logYif_isnan_ori, or(bp_est_bool,logYif_isnan_spk));
         
         % do we need this?
         lambda_r(logYif_isnan) = 0;
 end
 
-resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
+if is_debug
+    logYif_cor_test = logYif - logt_est * Xtc;
+    logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+    logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+    for li=liList
+        plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(3,:),...
+            'DisplayName','cor iter=0 after t upd');
+        hold(ax_spc,'on');
+        plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(4,:),...
+            'DisplayName','cor good iter=0  after t upd');
+        plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(4,:),...
+            'DisplayName','cor bad iter=0  after t upd');
+
+        plot(ax_tr,logt_est,'.-','Color',cols(3,:),...
+            'DisplayName','t est iter=0 after t upd');
+
+        RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+        hold(ax_res,'off');
+        plot(ax_res,RR);
+        hold(ax_res,'on');
+        plot(ax_res,RR_bad_1nan,'x'); 
+    end
+    drawnow;
+end
+
+
+
+switch upper(lambda_update_rule)
+    case 'L1SUM'
+        resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
+    case 'MED'
+        logYif_nisnan_1nan = convertBoolTo1nan(~logYif_isnan);
+        resNewNrm = nanmedian(abs(lambda_r.*RR.*logYif_nisnan_1nan),[1,2]);
+    case 'NONE'
+        resNewNrm = 1;
+    otherwise
+        error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
+end
 
 %%
 %-------------------------------------------------------------------------%
@@ -570,21 +767,30 @@ else
     lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 end
 
-switch upper(lambda_update_rule)
-    case 'L1SUM'
-        lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
-        lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
-    case 'MED'
-        error('not implemented yet');
-    case 'NONE'
-    otherwise
-        error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
+if ffc_mode
+else
+    lambda_a_2(idxAlogT,:,:) = lambda_a_2(idxAlogT,:,:) .* (resNewNrm ./ resNrm);
 end
+lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
+lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
+cff = resNewNrm/resNrm;
+% lambda_c = lambda_c.* (resNewNrm ./ resNrm);
+% lambda_c_ori = lambda_c_ori.* (resNewNrm ./ resNrm);
+
 % rho = ones([1,L,S],precision,'gpuArray');
 
 % lambda_tmp = lambda_a;
 % always update lambda_tmp
 % lambda_tmp = lambda_tmp .* resNewNrm ./ resNrm;
+
+logYif_isnan_c = logYif_isnan;
+logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:),...
+    logYif_isnan_c([1,Nc],:,:));
+lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad)./(Ymdl) .* cff;
+% lambda_c = lambda_c_ori;
+lambda_c = lambda_c_ori;
+lambda_c(logYif_isnan_c) = inf;
+lambda_c([1,Nc],:,:) = 0; % safeguard
 
 for n=2:nIter
     % tic;
@@ -661,12 +867,56 @@ for n=2:nIter
     end
     % toc;
     % evaluate bad pixels
-    if batch
-        RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
+    if ffc_mode
+        if batch
+            RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z) - logt_est;
+        else
+            RR = logYif - A*X - C*Z - logt_est;
+        end
     else
-        RR = logYif - A*X - C*Z;
+        if batch
+            RR = logYif - pagefun(@mtimes,A,X) - pagefun(@mtimes,C,Z);
+        else
+            RR = logYif - A*X - C*Z;
+        end
     end
     
+    if is_debug
+        if ffc_mode
+            Xtc = ones(1,L,S,precision,gpu_varargin{:});
+        else
+            Xtc = sum(X(idxAlogT,:,:),1);
+        end
+        logYif_cor_test = logYif - logt_est * Xtc;
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+        bg = C*Z;
+        ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+        ybad_1nan = convertBoolTo1nan(logYif_isnan);
+        logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+        logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+        for li=liList
+            plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(5,:),...
+                'DisplayName',sprintf('cor iter=%d before t upd',n));
+            hold(ax_spc,'on');
+            plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'o','Color',cols(6,:),...
+                'DisplayName',sprintf('cor bad iter=%d  before t upd',n));
+            plot(ax_spc,exp(ymodel(:,li)),'-','Color',cols(6,:),...
+             'DisplayName',sprintf('cor model iter=%d before t upd',n));
+            plot(ax_spc,exp(bg(:,li)),'-','Color',cols(6,:),...
+             'DisplayName',sprintf('cor bg iter=%d before t upd',n));
+
+            RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+            hold(ax_res,'off');
+            plot(ax_res,RR);
+            hold(ax_res,'on');
+            plot(ax_res,RR_bad_1nan,'x'); 
+        end
+        
+        drawnow;
+    end
+    
+
     % ## denoising ##------------------------------------------------------
     switch weight_mode
         case 0
@@ -698,12 +948,16 @@ for n=2:nIter
             mad_expected = max(mad_rr_band_prac,(stdl1_ifdf+photon_noise_mad_stdif));
 
             % More rigid bad pixel detection
-            bp_est_bool = mad_rr_band>0.001;
+            bp_est_bool = or(mad_rr_band>0.001,bp_bool_ori);
             
             % Now perform temporal spike removal (assuming that bias 
             % problem is gone)
             % The residual is evaluated in atm-corrected i/f domain.
-            res_exp_scaled = res_exp./(exp(A(:,1)).^X(1,:));
+            if ffc_mode
+                res_exp_scaled = res_exp./exp(logt_est);
+            else
+                res_exp_scaled = res_exp./(exp(A(:,idxAlogT))*X(idxAlogT,:));
+            end
             logYif_isnan_spk = abs(res_exp_scaled)>0.0015;
             
             % combine bad entry detections
@@ -713,21 +967,52 @@ for n=2:nIter
             badspc = (sum(logYif_isnan,1)/B) > th_badspc;
             logYif_isnan = or(logYif_isnan,badspc);
             
-            lambda_r = 1./mad_expected.*(Ymdl)./(B*20);
+            % lambda_r = 1./(mad_expected+bands_bias_mad).*(Ymdl)./(B*20);
+            lambda_r = 1./(mad_expected).*(Ymdl)./(B*20);
             % do we need to set lambda_r to zero?? not sure.
             lambda_r(logYif_isnan) = 0;
     end
+    
+    if is_debug
+        ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+        ybad_1nan = convertBoolTo1nan(logYif_isnan);
+        logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+        logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
-    lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
-    lambda_c([1,Nc],:,:) = 0; % safeguard
+        for li=liList
+            hold(ax_spc,'on');
+            plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(6,:),...
+                'DisplayName',sprintf('cor good iter=%d  before t upd',n));
+            plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(6,:),...
+                'DisplayName',sprintf('cor bad iter=%d  before t upd',n));
+            
+            
+            RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+            hold(ax_res,'off');
+            plot(ax_res,RR);
+            hold(ax_res,'on');
+            plot(ax_res,RR_bad_1nan,'x'); 
+        end
+        drawnow;
+    end
+
     
-    
-    resNrm = nansum(abs(lambda_r .* RR),[1,2]);
+    switch upper(lambda_update_rule)
+        case 'L1SUM'
+            resNrm = nansum(abs(RR.* lambda_r),[1,2]);
+        case 'MED'
+            logYif_nisnan_1nan = convertBoolTo1nan(~logYif_isnan);
+            resNrm = nanmedian(abs(lambda_r.*RR .* logYif_nisnan_1nan),[1,2]);
+        case 'NONE'
+            resNrm = 1;
+        otherwise
+            error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
+    end
     
     % update logt_est
     if ffc_mode
-        RR = RR + logT;
-        Xtc = ones(1,L,S,precision,gpu_varargin);
+        RR = RR + logt_est;
+        Xtc = ones(1,L,S,precision,gpu_varargin{:});
     else
         if batch
             RR  = RR + pagefun(@mtimes,A(:,idxAlogT,:),X(idxAlogT,:,:));
@@ -750,28 +1035,73 @@ for n=2:nIter
         
     end
     logt_est = permute(logt_est,[2,1,3]);
+    logt_est(bp_est_bool) = logT(bp_est_bool);
     if batch
         RR = RR - pagefun(@mtimes,logt_est,Xtc);
     else
         RR = RR - logt_est*Xtc;
     end
-    resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
-    % do we need to update lambda here? not sure.
-    
-    A(:,idxAlogT,:) = logt_est;
+    if is_debug
+        logYif_cor_test = logYif - logt_est * Xtc;
+        logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+        logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+        for li=liList
+            plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(7,:),...
+                'DisplayName',sprintf('cor iter=%d after t upd',n));
+            hold(ax_spc,'on');
+            plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(8,:),...
+                'DisplayName',sprintf('cor good iter=%d  after t upd',n));
+            plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(8,:),...
+                'DisplayName',sprintf('cor bad iter=%d  after t upd',n));
+
+            plot(ax_tr,logt_est,'.-','Color',cols(7,:),...
+                'DisplayName',sprintf('t est iter=%d after t upd',n));
+
+            RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+            hold(ax_res,'off');
+            plot(ax_res,RR);
+            hold(ax_res,'on');
+            plot(ax_res,RR_bad_1nan,'x'); 
+        end
+        drawnow;
+    end
     
     switch upper(lambda_update_rule)
         case 'L1SUM'
-            lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
-            lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
+            resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
         case 'MED'
-            error('not implemented yet');
+            logYif_nisnan_1nan = convertBoolTo1nan(~logYif_isnan);
+            resNewNrm = nanmedian(abs(lambda_r.*RR.*logYif_nisnan_1nan),[1,2]);
         case 'NONE'
+            resNewNrm = 1;
         otherwise
             error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
     end
     
+    % do we need to update lambda here? not sure.
+    if ffc_mode
+    else
+        A(:,idxAlogT,:) = logt_est;
+    end
+    
+    if ffc_mode
+    else
+        lambda_a_2(idxAlogT,:,:) = lambda_a_2(idxAlogT,:,:) .* (resNewNrm ./ resNrm);
+    end
+    lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
+    lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
+    cff = cff .* resNewNrm/resNrm;
+    
+    logYif_isnan_c = logYif_isnan;
+    logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:),...
+        logYif_isnan_c([1,Nc],:,:));
+    lambda_c_ori = (mad_expected+bands_bias_mad)./(Ymdl) .* cff;
+    % lambda_c = lambda_c_ori;
+    lambda_c = lambda_c_ori;
+    lambda_c(logYif_isnan_c) = inf;
+    lambda_c([1,Nc],:,:) = 0;
     
 end
 
@@ -815,8 +1145,45 @@ else
     end
 end
 
+if is_debug
+    if ffc_mode
+        Xtc = ones(1,L,S,precision,gpu_varargin{:});
+    else
+        Xtc = sum(X(idxAlogT,:,:),1);
+    end
+    logYif_cor_test = logYif - logt_est * Xtc;
+    ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+    bg = C*Z;
+    ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+    ybad_1nan = convertBoolTo1nan(logYif_isnan);
+    logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+    logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+    for li=liList
+        plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(9,:),...
+            'DisplayName','cor out');
+        hold(ax_spc,'on');
+        plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(10,:),...
+            'DisplayName','cor good out');
+        plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(10,:),...
+            'DisplayName','cor bad out');
+        plot(ax_spc,exp(ymodel(:,li)),'-','Color',cols(10,:),...
+            'DisplayName','cor model out');
+        plot(ax_spc,exp(bg(:,li)),'-','Color',cols(10,:),...
+            'DisplayName','cor bg out');
+
+        RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+        hold(ax_res,'off');
+        plot(ax_res,RR);
+        hold(ax_res,'on');
+        plot(ax_res,RR_bad_1nan,'x'); 
+    end
+    drawnow;
+end
+
+
 if ffc_mode     
-    Xtc = ones(1,L,S,precision,gpu_varargin);
+    Xtc = ones(1,L,S,precision,gpu_varargin{:});
 else
     Xtc = X(idxAlogT,:,:);
 end
@@ -837,14 +1204,17 @@ end
 logYif_cor(logYif_isnan) = nan;
 
 if batch
-    [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc]...
-        = gather(logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc);
+    [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc,bp_est_bool]...
+        = gather(logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc,bp_est_bool);
 else
 end
 
 Xt           = Xtc;
 Xice         = X(idxAice,:,:);
 Xlib         = X(idxAlib,:,:);
+
+
+
 
 end
 

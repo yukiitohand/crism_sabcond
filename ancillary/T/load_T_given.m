@@ -6,11 +6,13 @@ function [ trans_spcs ] = load_T_given( obs_id,varargin )
 % Optional parameters
 %  'ADDITIONAL_SUFFIX': ad
 %      (default) 'lam05'
+%  'DIRPATH': 
 
 
 additional_suffix = 'lam05';
 % binning = ''; wv_filter = '';
 % overwrite = 0;
+dirpath = '';
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -19,6 +21,8 @@ else
         switch upper(varargin{i})
             case 'ADDITIONAL_SUFFIX'
                 additional_suffix = varargin{i+1};
+            case 'DIRPATH'
+                dirpath = varargin{i+1};
 %             case 'BINNING'
 %                 binning = varargin{i+1};
 %                 if isnumeric(binning)
@@ -44,7 +48,7 @@ obs_id8c = sprintf('%08s',obs_id);
 
 
 %% resolve the filenames
-T_matfname = sprintf('TList_FFC%s_%s.mat',obs_id8c,additional_suffix);
+T_matfname = joinPath(dirpath,sprintf('TList_FFC%s_%s.mat',obs_id8c,additional_suffix));
 if ~exist(T_matfname,'file')
     error('%s does not exist.',T_matfname);
 end
