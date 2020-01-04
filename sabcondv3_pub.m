@@ -163,9 +163,10 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       (default) false
 %
 %  ## PRE-PROCESSING OPTIONS #---------------------------------------------
-%   'CAL_BIAS_COR': Boolean, 
-%       whether or not to perform image based bias correction.
-%       (default) true
+%   'CAL_BIAS_COR': Integer {0,1,2}
+%       Option for how to perform image based bias correction.
+%       0: none, 1: conservative correction, 2: aggressive correction
+%       (default) 0
 %
 %  ## TRANSMISSION SPECTRUM OPTIONS #--------------------------------------
 %    'T_MODE': integer {1,2,3,4,5}
@@ -562,28 +563,41 @@ Yif = Yif(line_idxes,:,:);
 
 % estimate potential biases
 bands4bias = 1:252;
-if cal_bias_cor
-    mat_name = [TRRYIFdata.basename sprintf('_BPpost3%dt%d.mat',bands4bias(1),bands4bias(end))];
-    if exist(mat_name,'file')
-        load(mat_name,'dev_coef','band_bias_std','bands4bias');
-    else
-        [BPpost_plus,band_bias_std,dev_sub,val_ratio_3d2,val_ratio_3d2_smth2] = detect_BPpost_wBias3(...
-            Yif(:,:,:), DMmask,'bands',bands4bias,'debug',is_debug);
+switch cal_bias_cor
+    case {1,2}
+        mat_name = [TRRYIFdata.basename sprintf('_BPpost3%dt%d.mat',bands4bias(1),bands4bias(end))];
+        if exist(mat_name,'file')
+            load(mat_name,'dev_coef','band_bias_std','bands4bias','dev_sub');
+        else
+            [BPpost_plus,band_bias_std,dev_sub,val_ratio_3d2,val_ratio_3d2_smth2] = detect_BPpost_wBias3(...
+                Yif(:,:,:), DMmask,'bands',bands4bias,'debug',is_debug);
 
-        [dev_coef,img_nanmed_estimate,dev_coef_ori] = calc_deviation_BPpost2(...
-            BPpost_plus(1,:,bands4bias),Yif(:,:,bands4bias));
-        save(mat_name,'dev_coef','band_bias_std','dev_sub','img_nanmed_estimate','dev_coef_ori','bands4bias','BPpost_plus','val_ratio_3d2','val_ratio_3d2_smth2');
-    end
-    % bands_bias_mad is for later processing.
-    bands_bias_mad = permute(band_bias_std(:,:,bands),[3,1,2]) .* norminv(0.75);
-else
-    dev_coef = ones(1,size(Yif,2),length(bands4bias));
-    bands_bias_mad = zeros(lengh(bands),1);
+            [dev_coef,img_nanmed_estimate,dev_coef_ori] = calc_deviation_BPpost2(...
+                BPpost_plus(1,:,bands4bias),Yif(:,:,bands4bias));
+            save(mat_name,'dev_coef','band_bias_std','dev_sub','img_nanmed_estimate','dev_coef_ori','bands4bias','BPpost_plus','val_ratio_3d2','val_ratio_3d2_smth2');
+        end
+        % bands_bias_mad is for later processing.
+        bands_bias_mad = permute(band_bias_std(:,:,bands),[3,1,2]) .* norminv(0.75);
+        
+        switch cal_bias_cor
+            case 1 % conservative correction
+                % dev_coef = dev_coef;
+            case 2 % aggressive correction
+                dev_coef = Yif(:,:,bands4bias) ./ (Yif(:,:,bands4bias)-dev_sub);
+        end
+        
+        
+    case {0}
+        dev_coef = ones(1,size(Yif,2),length(bands4bias));
+        bands_bias_mad = zeros(lengh(bands),1);
+    otherwise
+        error('Undefined CAL_BIAS_COR=%d',cal_bias_cor);
 end
 
 % apply biases for severely corrupted ones.
 Yif = Yif(:,:,bands4bias)./dev_coef;
 Yif = Yif(:,:,bands);
+Yif(Yif<=0) = nan;
 logYif = log(Yif);
 logYif = permute(logYif,[3,1,2]);
 
