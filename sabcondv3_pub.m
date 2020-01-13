@@ -211,6 +211,12 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'LAMBDA_A': double array or scalar
 %       trade-off parameter of the cost function.
 %       (default) 0.01
+%   'T_UPDATE: scalar,
+%       how many times t is updated
+%       (default) inf (update as many as nIter)
+%   'LOGT_NEG': boolean,
+%       whether or not to force logT to be negative
+%       (default) false
 %
 %  ## PROCESSING OPTIONS #-------------------------------------------------
 %   'PRECISION': string, {'single','double'}
@@ -286,6 +292,8 @@ opticelib       = '';
 % ## SABCONDC OPTIONS #----------------------------------------------------
 nIter = 5;
 lambda_a = 0.01;
+t_update     = inf;
+logT_neg = false;
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 precision  = 'double';
@@ -385,6 +393,10 @@ else
                 nIter = varargin{i+1};
             case 'LAMBDA_A'
                 lambda_a = varargin{i+1};
+            case 'T_UPDATE'
+                t_update = varargin{i+1};
+            case 'LOGT_NEG'
+                logT_neg = varargin{i+1};
                 
             % ## PROCESSING OPTIONS #--------------------------------------
             case 'PRECISION'
@@ -589,7 +601,7 @@ switch cal_bias_cor
         
     case {0}
         dev_coef = ones(1,size(Yif,2),length(bands4bias));
-        bands_bias_mad = zeros(lengh(bands),1);
+        bands_bias_mad = zeros(length(bands),1);
     otherwise
         error('Undefined CAL_BIAS_COR=%d',cal_bias_cor);
 end
@@ -1002,7 +1014,8 @@ switch upper(PROC_MODE)
                                       'STDL1_IFDF',stdl1_ifdf(:,:,Columns),'SFIMG',SFimg(:,:,Columns),...
                                       'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl,'FFC_MODE',ffc_mode,...
                                       'DEBUG',is_debug,...
-                                      'Bands_Bias_MAD',bands_bias_mad);
+                                      'Bands_Bias_MAD',bands_bias_mad,...
+                                      'T_UPDATE',t_update,'LOGT_NEG',logT_neg);
                     end
             end
             switch upper(PROC_MODE)
@@ -1170,6 +1183,8 @@ fprintf(fid,'OPT_ICELIB: %d\n',opticelib);
 % ## SABCONDC OPTIONS #----------------------------------------------------
 fprintf(fid,'NITER: %d\n',nIter);
 fprintf(fid,'LAMBDA_A:'); fprintf(fid,' %f',lambda_a); fprintf(fid,'\n');
+fprintf(fid,'T_UPDATE: %d\n',t_update);
+fprintf(fid,'LOGT_NEG: %d\n',logT_neg);
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 fprintf(fid,'PRECISION: %s\n',precision);
@@ -1230,6 +1245,8 @@ settings.opticelib = opticelib;
 % ## SABCONDC OPTIONS #----------------------------------------------------
 settings.nIter = nIter;
 settings.lambda_a = lambda_a;
+settings.t_update = t_update;
+settings.logT_neg = logT_neg;
 % ## PROCESSING OPTIONS #--------------------------------------------------
 settings.precision = precision;
 settings.PROC_MODE = PROC_MODE;

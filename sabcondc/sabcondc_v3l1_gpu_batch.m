@@ -62,6 +62,12 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'BANDS_BIAS_MAD': array, [B x 1]
 %       median absolute deviation of calibration bias for each band
 %       (default) zeros(B,1)
+%   'T_UPDATE: scalar,
+%       how many times t is updated
+%       (default) inf (update as many as nIter)
+%   'LOGT_NEG': boolean,
+%       whether or not to force logT to be negative
+%       (default) false
 %  ## HUWACB PARAMETERS #--------------------------------------------------
 %   'LAMBDA_A': scalar,
 %        trade-off parameter, controling sparsity of the coefficients of Alib
@@ -146,6 +152,8 @@ th_badspc = 0.8;
 lambda_update_rule = 'L1SUM';
 ffc_mode  = false;
 bands_bias_mad = zeros(B,1);
+t_update = inf;
+logT_neg = false;
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = 0;
 stdl1_ifdf  = [];
@@ -155,7 +163,7 @@ lbl         = [];
 % ## HUWACB PARAMETERS #---------------------------------------------------
 lambda_a       = 0.01;
 lambda_a_ice   = 0;
-maxiter_huwacb = int32(200);
+maxiter_huwacb = int32(1000);
 tol_huwacb     = 1e-4;
 verbose_huwacb = 'no';
 debug_huwacb   = false;
@@ -188,6 +196,10 @@ else
                 ffc_mode = varargin{i+1};
             case 'BANDS_BIAS_MAD'
                 bands_bias_mad = varargin{i+1};
+            case 'T_UPDATE'
+                t_update = varargin{i+1};
+            case 'LOGT_NEG'
+                logT_neg = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -387,13 +399,14 @@ switch weight_mode
         % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
         lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)/(B*20);
         lambda_r = lambda_r .* exp(logT);
+        % lambda_r = lambda_r .* exp(logT).^2./sum(exp(logT).^2);
         lambda_r(logYif_isnan_ori) = 0;
         bp_bool_ori = all(logYif_isnan_ori,2);
 end
 
 if ffc_mode
 else
-    lambda_a_2(idxAlogT,:,:) = 0.*ones(Ntc,L,S,precision,gpu_varargin{:});
+    lambda_a_2(idxAlogT,:,:) = 0.0*ones(Ntc,L,S,precision,gpu_varargin{:});
 end
 lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
 lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
@@ -474,7 +487,7 @@ if is_debug
             0.7500         0    0.7500;
             0.7500    0.7500         0;
             0.2500    0.2500    0.2500];
-    liList = 50;
+    liList = 185;
     % Get initial transmission spectrum
     if ffc_mode
         Xtc = ones(1,L,S,precision,gpu_varargin{:});
@@ -631,22 +644,30 @@ else
     Xtc = sum(X(idxAlogT,:,:),1);
 end
 
-if batch
-    [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val,Kcond]...
-           = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-                'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
-                'verbose',verbose_lad,'precision',precision);
+if t_update < 1
+    logt_est = logT;
 else
-    [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
-    = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-             'lambda_r',permute(lambda_r,[2,1,3]),...
-             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
-             'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
-end
-%
-logt_est = permute(logt_est,[2,1,3]);
+    if batch
+        [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val,Kcond]...
+               = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
+                    'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
+                    'verbose',verbose_lad,'precision',precision);
+    else
+        [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
+        = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
+                 'lambda_r',permute(lambda_r,[2,1,3]),...
+                 'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
+                 'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
+    end
+    %
+    logt_est = permute(logt_est,[2,1,3]);
 
-logt_est(bp_est_bool) = logT(bp_est_bool);
+    logt_est(bp_est_bool) = logT(bp_est_bool);
+end
+
+if logT_neg
+    logt_est(logt_est>0) = 0;
+end
 
 % relaxation
 % logt_est = logT + max(abs(logt_est-logT)./mad_log_band,0) .* logt_est;
@@ -1021,21 +1042,28 @@ for n=2:nIter
         end
         Xtc = X(idxAlogT,:,:);
     end
-    if batch
-        [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
-           = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...% 'rho',rho_lad,'Rhov',Rhov_lad,...
-                'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
-                'verbose',verbose_lad,'precision',precision,'Kcond',Kcond);
-    else
-        [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
-            = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-             'lambda_r',permute(lambda_r,[2,1,3]),...
-             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
-             'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
-        
+    if n <= t_update
+        if batch
+            [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
+               = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...% 'rho',rho_lad,'Rhov',Rhov_lad,...
+                    'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
+                    'verbose',verbose_lad,'precision',precision,'Kcond',Kcond);
+        else
+            [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
+                = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
+                 'lambda_r',permute(lambda_r,[2,1,3]),...
+                 'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
+                 'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
+
+        end
+        logt_est = permute(logt_est,[2,1,3]);
+        logt_est(bp_est_bool) = logT(bp_est_bool);
     end
-    logt_est = permute(logt_est,[2,1,3]);
-    logt_est(bp_est_bool) = logT(bp_est_bool);
+    
+    if logT_neg
+        logt_est(logt_est>0) = 0;
+    end
+    
     if batch
         RR = RR - pagefun(@mtimes,logt_est,Xtc);
     else
