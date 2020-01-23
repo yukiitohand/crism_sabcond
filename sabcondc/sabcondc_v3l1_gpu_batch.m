@@ -68,6 +68,9 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'LOGT_NEG': boolean,
 %       whether or not to force logT to be negative
 %       (default) false
+%   'LOGT_RELAX': boolean,
+%       whether or not to relax logT update with the residuals
+%       (default) false
 %  ## HUWACB PARAMETERS #--------------------------------------------------
 %   'LAMBDA_A': scalar,
 %        trade-off parameter, controling sparsity of the coefficients of Alib
@@ -154,6 +157,7 @@ ffc_mode  = false;
 bands_bias_mad = zeros(B,1);
 t_update = inf;
 logT_neg = false;
+logt_relax = false;
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = 0;
 stdl1_ifdf  = [];
@@ -200,6 +204,8 @@ else
                 t_update = varargin{i+1};
             case 'LOGT_NEG'
                 logT_neg = varargin{i+1};
+            case 'LOGT_RELAX'
+                logt_relax = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -487,7 +493,7 @@ if is_debug
             0.7500         0    0.7500;
             0.7500    0.7500         0;
             0.2500    0.2500    0.2500];
-    liList = 185;
+    liList = 15;
     % Get initial transmission spectrum
     if ffc_mode
         Xtc = ones(1,L,S,precision,gpu_varargin{:});
@@ -661,6 +667,12 @@ else
     end
     %
     logt_est = permute(logt_est,[2,1,3]);
+    
+    if logt_relax
+        dlogt = logt_est - logT;
+        dlogt = soft_thresh(dlogt,mad_log_band/norminv(0.75)./sqrt(sum(~logYif_isnan,2)));
+        logt_est = logT + dlogt;
+    end
 
     logt_est(bp_est_bool) = logT(bp_est_bool);
 end
@@ -807,7 +819,8 @@ cff = resNewNrm/resNrm;
 logYif_isnan_c = logYif_isnan;
 logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:),...
     logYif_isnan_c([1,Nc],:,:));
-lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad)./(Ymdl) .* cff;
+% lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad)./(Ymdl) .* cff;
+lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac))./(Ymdl) .* cff;
 % lambda_c = lambda_c_ori;
 lambda_c = lambda_c_ori;
 lambda_c(logYif_isnan_c) = inf;
@@ -1057,6 +1070,13 @@ for n=2:nIter
 
         end
         logt_est = permute(logt_est,[2,1,3]);
+        
+        if logt_relax
+            dlogt = logt_est - A(:,idxAlogT,:);
+            dlogt = soft_thresh(dlogt,mad_log_band/norminv(0.75)./sqrt(sum(~logYif_isnan,2)));
+            logt_est = A(:,idxAlogT,:) + dlogt;
+        end
+        
         logt_est(bp_est_bool) = logT(bp_est_bool);
     end
     
@@ -1125,7 +1145,8 @@ for n=2:nIter
     logYif_isnan_c = logYif_isnan;
     logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:),...
         logYif_isnan_c([1,Nc],:,:));
-    lambda_c_ori = (mad_expected+bands_bias_mad)./(Ymdl) .* cff;
+    % lambda_c_ori = (mad_expected+bands_bias_mad)./(Ymdl) .* cff;
+    lambda_c_ori = (mad_expected)./(Ymdl) .* cff;
     % lambda_c = lambda_c_ori;
     lambda_c = lambda_c_ori;
     lambda_c(logYif_isnan_c) = inf;

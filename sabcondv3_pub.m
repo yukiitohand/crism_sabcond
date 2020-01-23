@@ -217,6 +217,9 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'LOGT_NEG': boolean,
 %       whether or not to force logT to be negative
 %       (default) false
+%   'LOGT_RELAX': boolean,
+%       whether or not to relax logT update with the residuals
+%       (default) false
 %
 %  ## PROCESSING OPTIONS #-------------------------------------------------
 %   'PRECISION': string, {'single','double'}
@@ -294,6 +297,7 @@ nIter = 5;
 lambda_a = 0.01;
 t_update     = inf;
 logT_neg = false;
+logt_relax = false;
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 precision  = 'double';
@@ -397,6 +401,8 @@ else
                 t_update = varargin{i+1};
             case 'LOGT_NEG'
                 logT_neg = varargin{i+1};
+            case 'LOGT_RELAX'
+                logt_relax = varargin{i+1};
                 
             % ## PROCESSING OPTIONS #--------------------------------------
             case 'PRECISION'
@@ -1015,7 +1021,7 @@ switch upper(PROC_MODE)
                                       'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl,'FFC_MODE',ffc_mode,...
                                       'DEBUG',is_debug,...
                                       'Bands_Bias_MAD',bands_bias_mad,...
-                                      'T_UPDATE',t_update,'LOGT_NEG',logT_neg);
+                                      'T_UPDATE',t_update,'LOGT_NEG',logT_neg,'logt_relax',logt_relax);
                     end
             end
             switch upper(PROC_MODE)
@@ -1185,6 +1191,7 @@ fprintf(fid,'NITER: %d\n',nIter);
 fprintf(fid,'LAMBDA_A:'); fprintf(fid,' %f',lambda_a); fprintf(fid,'\n');
 fprintf(fid,'T_UPDATE: %d\n',t_update);
 fprintf(fid,'LOGT_NEG: %d\n',logT_neg);
+fprintf(fid,'LOGT_RELAX: %d\n',logt_relax);
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 fprintf(fid,'PRECISION: %s\n',precision);
@@ -1247,6 +1254,7 @@ settings.nIter = nIter;
 settings.lambda_a = lambda_a;
 settings.t_update = t_update;
 settings.logT_neg = logT_neg;
+settings.logt_relax = logt_relax;
 % ## PROCESSING OPTIONS #--------------------------------------------------
 settings.precision = precision;
 settings.PROC_MODE = PROC_MODE;
