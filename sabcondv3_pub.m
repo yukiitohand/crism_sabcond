@@ -161,6 +161,8 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'FFC_MODE': boolean
 %       whether or not to perform FFC correcion
 %       (default) false
+%   'OPT_BANDS_IGNORE_INIT': string,
+%       options for selecting bands to be ignored in the first iteration
 %
 %  ## PRE-PROCESSING OPTIONS #---------------------------------------------
 %   'CAL_BIAS_COR': Integer {0,1,2}
@@ -363,6 +365,8 @@ else
                 th_badspc = varargin{i+1};
             case 'FFC_MODE'
                 ffc_mode = varargin{i+1};
+            case 'OPT_BANDS_IGNORE_INIT'
+                opt_bands_ignore_init = varargin{i+1};
                 
             % % ## PRE-PROCESSING OPTIONS #--------------------------------
             case 'CAL_BIAS_COR'
@@ -740,7 +744,15 @@ switch t_mode
         error('Undefined t_mode %d',t_mode);
 end
 T = at_trans(:,:,bands); T(T<=1e-8) = nan;
-T = permute(T,[3,1,2]); logT = log(T);
+T = permute(T,[3,1,2]); 
+
+switch precision
+    case 'single'
+        T = single(T);
+    case 'double'
+        T = double(T);
+end
+logT = log(T);
 
 fprintf('finish loading ADR\n');
 %%
