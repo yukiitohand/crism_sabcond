@@ -71,6 +71,8 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'LOGT_RELAX': boolean,
 %       whether or not to relax logT update with the residuals
 %       (default) false
+%   'BANDS_IGNORE_INIT':boolean, [B x 1 x S]
+%       bands to be ignored in the first iteration
 %  ## HUWACB PARAMETERS #--------------------------------------------------
 %   'LAMBDA_A': scalar,
 %        trade-off parameter, controling sparsity of the coefficients of Alib
@@ -158,6 +160,9 @@ bands_bias_mad = zeros(B,1);
 t_update = inf;
 logT_neg = false;
 logt_relax = false;
+bands_ignore_init = false(B,1,S);
+bands_logt_nonlinear = false(B,1,S);
+
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = 0;
 stdl1_ifdf  = [];
@@ -206,6 +211,10 @@ else
                 logT_neg = varargin{i+1};
             case 'LOGT_RELAX'
                 logt_relax = varargin{i+1};
+            case 'BANDS_IGNORE_INIT'
+                bands_ignore_init = varargin{i+1};
+            case 'BANDS_LOGT_NONLINEAR'
+                bands_logt_nonlinear = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -402,11 +411,16 @@ switch weight_mode
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
                                         RDimg,WA,WA_um_pitch,lbl,SFimg);
         %
-        % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
+        % % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
         lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)/(B*20);
         lambda_r = lambda_r .* exp(logT);
+        % lambda_r = 1./((stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)+abs(logT).^2*1e-4)/(B*100);
+        logYif_isnan = logYif_isnan_ori;
+        logYif_isnan = or(logYif_isnan,bands_ignore_init); % logYif_isnan((169:185-3),:) = true;
+        % logYif_isnan = or(logYif_isnan,bands_logt_nonlinear);
+        logYif_isnan(logT<-0.35,:) = true;
         % lambda_r = lambda_r .* exp(logT).^2./sum(exp(logT).^2);
-        lambda_r(logYif_isnan_ori) = 0;
+        lambda_r(logYif_isnan) = 0;
         bp_bool_ori = all(logYif_isnan_ori,2);
 end
 
@@ -457,7 +471,7 @@ else
         [  X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
         = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
         'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'YNORMALIZE',y_normalize,.....
-        'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
+        'tol',1e-5,'maxiter',300,'verbose','no',...
         'precision',precision,'gpu',gpu,'Concavebase',C,'debug',debug_huwacb);
     end
 end
@@ -493,7 +507,7 @@ if is_debug
             0.7500         0    0.7500;
             0.7500    0.7500         0;
             0.2500    0.2500    0.2500];
-    liList = 15;
+    liList = 250;
     % Get initial transmission spectrum
     if ffc_mode
         Xtc = ones(1,L,S,precision,gpu_varargin{:});
@@ -714,8 +728,9 @@ switch weight_mode
         mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,...
             'NOutliers',10,'data_center',0);
         
-        % lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad).*(Ymdl)./(B*20);
+        % % lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad).*(Ymdl)./(B*20);
         lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)).*(Ymdl)./(B*20);
+        % lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)).*(Ymdl)./(B*100);
         
         if ffc_mode
             res_exp_scaled = res_exp./exp(logT);
