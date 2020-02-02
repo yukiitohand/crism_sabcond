@@ -173,6 +173,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       (default) false
 %   'OPT_BANDS_IGNORE_INIT': string, {'none','ltn035'}
 %       options for selecting bands to be ignored in the first iteration
+%       (default) 'none'
 %
 %  ## PRE-PROCESSING OPTIONS #---------------------------------------------
 %   'CAL_BIAS_COR': Integer {0,1,2}
@@ -290,6 +291,7 @@ weight_mode  = 0;
 lambda_update_rule = 'L1SUM';
 th_badspc    = 0.8;
 ffc_mode     = false;
+opt_bands_ignore_init = 'none';
 
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 cal_bias_cor = 1;
