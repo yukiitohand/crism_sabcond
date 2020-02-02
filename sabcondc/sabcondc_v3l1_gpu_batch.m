@@ -71,6 +71,10 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'LOGT_RELAX': boolean,
 %       whether or not to relax logT update with the residuals
 %       (default) false
+%   'OPT_BANDS_IGNORE_INIT': string, {'none','ltn035'}
+%       option for selecting bands to be ignored.
+%       (default) 'none'
+%   (below is under development)
 %   'BANDS_IGNORE_INIT':boolean, [B x 1 x S]
 %       bands to be ignored in the first iteration
 %  ## HUWACB PARAMETERS #--------------------------------------------------
@@ -160,9 +164,9 @@ bands_bias_mad = zeros(B,1);
 t_update = inf;
 logT_neg = false;
 logt_relax = false;
+opt_bands_ignore_init = 'none';
 bands_ignore_init = false(B,1,S);
 bands_logt_nonlinear = false(B,1,S);
-
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = 0;
 stdl1_ifdf  = [];
@@ -211,6 +215,8 @@ else
                 logT_neg = varargin{i+1};
             case 'LOGT_RELAX'
                 logt_relax = varargin{i+1};
+            case 'OPT_BANDS_IGNORE_INIT'
+                opt_bands_ignore_init = varargin{i+1};
             case 'BANDS_IGNORE_INIT'
                 bands_ignore_init = varargin{i+1};
             case 'BANDS_LOGT_NONLINEAR'
@@ -418,7 +424,14 @@ switch weight_mode
         logYif_isnan = logYif_isnan_ori;
         logYif_isnan = or(logYif_isnan,bands_ignore_init); % logYif_isnan((169:185-3),:) = true;
         % logYif_isnan = or(logYif_isnan,bands_logt_nonlinear);
-        logYif_isnan(logT<-0.35,:) = true;
+        switch upper(opt_bands_ignore_init)
+            case 'NONE'
+                % no processing
+            case 'LTN035'
+                logYif_isnan(logT<-0.35,:) = true;
+            otherwise
+                error('Undefined OPT_BANDS_IGNORE_INIT %s',opt_bands_ignore_init);
+        end
         % lambda_r = lambda_r .* exp(logT).^2./sum(exp(logT).^2);
         lambda_r(logYif_isnan) = 0;
         bp_bool_ori = all(logYif_isnan_ori,2);

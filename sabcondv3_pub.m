@@ -112,6 +112,16 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       processing.
 %       (default) false
 %
+%  ## INPUT IMAGE OPTIONS #------------------------------------------------
+%   'OBS_COUNTER_SCENE': string
+%        regular expression to match observation counter, such as
+%        '0[13]{1}', observation counter for scene measurements.
+%        (default) depends on observation type
+%   'OBS_COUNTER_DF': 
+%        regular expression to match observation counter, such as
+%        '0[13]{1}', observation counter for dark frame measurements.
+%        (default) depends on observation type
+%
 %  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'OPT_IMG': string, {'IF','RA_IF','TRRY','TRRB','TRRC'}
 %       type of input image to be used
@@ -161,7 +171,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'FFC_MODE': boolean
 %       whether or not to perform FFC correcion
 %       (default) false
-%   'OPT_BANDS_IGNORE_INIT': string,
+%   'OPT_BANDS_IGNORE_INIT': string, {'none','ltn035'}
 %       options for selecting bands to be ignored in the first iteration
 %
 %  ## PRE-PROCESSING OPTIONS #---------------------------------------------
@@ -1096,7 +1106,8 @@ switch upper(PROC_MODE)
                                       'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl,'FFC_MODE',ffc_mode,...
                                       'DEBUG',is_debug,...
                                       'Bands_Bias_MAD',bands_bias_mad,...
-                                      'T_UPDATE',t_update,'LOGT_NEG',logT_neg,'logt_relax',logt_relax);
+                                      'T_UPDATE',t_update,'LOGT_NEG',logT_neg,'logt_relax',logt_relax,...
+                                      'opt_bands_ignore_init',opt_bands_ignore_init);
                     end
             end
             switch upper(PROC_MODE)
@@ -1219,6 +1230,10 @@ fprintf(fid,'INTERLEAVE_OUT: %s\n',interleave_out);
 fprintf(fid,'SUBSET_COLUMNS_OUT: %d\n', subset_columns_out);
 fprintf(fid,'ALIB_OUT: %d\n',Alib_out);
 
+% ## INPUT IMAGE OPTIONS #-------------------------------------------------
+fprintf(fid,'OBS_COUNTER: %d\n', obs_counter);
+fprintf(fid,'OBS_COUNTER_DF: %d\n', obs_counter_df);
+
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 fprintf(fid,'OPT_IMG: %s\n',opt_img);
 fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
@@ -1234,6 +1249,7 @@ fprintf(fid,'WEIGHT_MODE: %d\n',weight_mode);
 fprintf(fid,'LAMBDA_UPDATE_RULE: %s\n',lambda_update_rule);
 fprintf(fid,'THRESHOLD_BADSPC: %f\n',th_badspc);
 fprintf(fid,'FFC_MODE: %d\n',ffc_mode);
+fprintf(fid,'OPT_BANDS_IGNORE_INIT: %s\n',opt_bands_ignore_init);
 
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 fprintf(fid,'CAL_BIAS_COR: %d\n', cal_bias_cor);
@@ -1295,6 +1311,9 @@ settings.additional_suffix = additional_suffix;
 settings.interleave_out = interleave_out;
 settings.subset_columns_out = subset_columns_out;
 settings.Alib_out = Alib_out;
+% ## INPUT IMAGE OPTIONS #-------------------------------------------------
+settings.obs_counter = obs_counter;
+settings.obs_counter_df = obs_counter_df;
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 settings.opt_img = opt_img;
 settings.trry_pdir = dir_yuk;
@@ -1310,6 +1329,7 @@ settings.weight_mode = weight_mode;
 settings.lambda_update_rule = lambda_update_rule;
 settings.th_badspc = th_badspc;
 settings.ffc_mode = ffc_mode;
+settings.opt_bands_ignore_init = opt_bands_ignore_init;
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 settings.cal_bias_cor = cal_bias_cor;
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
