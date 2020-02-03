@@ -1257,7 +1257,10 @@ for i=1:length(varargin_T)
     else
         string_varargin_T = varargin_T{i};
     end
-    fprintf(' %s', string_varargin_T);
+    fprintf(fid,' "%s"', string_varargin_T);
+    if i<length(varargin_T)
+        fprintf(',');
+    end
 end
 fprintf('\n');
 
