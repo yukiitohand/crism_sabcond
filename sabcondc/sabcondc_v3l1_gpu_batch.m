@@ -418,7 +418,7 @@ switch weight_mode
         end
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         %
         % % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
         lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)/(B*20);
@@ -619,7 +619,7 @@ switch weight_mode
         
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         mad_rr_band_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
         res_exp = Yif - Ymdl;
         mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
