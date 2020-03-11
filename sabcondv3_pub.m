@@ -322,6 +322,7 @@ precision  = 'double';
 PROC_MODE  = 'CPU_1';
 batch_size = 10;
 is_debug   = false;
+debug_l_plot = 1;
 
 % ## ETCETERA #------------------------------------------------------------
 % gausssigma = 0.6;
@@ -441,6 +442,8 @@ else
                 batch_size = varargin{i+1};
             case 'DEBUG'
                 is_debug = varargin{i+1};
+            case 'DEBUG_L_PLOT'
+                debug_l_plot = varargin{i+1};
                 
             otherwise
                 error('Unrecognized option: %s',varargin{i});
@@ -1100,7 +1103,7 @@ switch upper(PROC_MODE)
                                       'DEBUG',is_debug,...
                                       'Bands_Bias_MAD',bands_bias_mad,...
                                       'T_UPDATE',t_update,'LOGT_NEG',logT_neg,'logt_relax',logt_relax,...
-                                      'opt_bands_ignore_init',opt_bands_ignore_init);
+                                      'opt_bands_ignore_init',opt_bands_ignore_init,'debug_l_plot',debug_l_plot);
                     end
             end
             switch upper(PROC_MODE)
