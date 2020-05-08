@@ -418,7 +418,7 @@ switch weight_mode
         end
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         %
         % % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
         lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)/(B*20);
@@ -431,7 +431,8 @@ switch weight_mode
             case 'NONE'
                 % no processing
             case 'LTN035'
-                logYif_isnan(logT<-0.35,:) = true;
+                nlt = logT<-0.35;
+                logYif_isnan = ( logYif_isnan + nlt ) > 0;
             otherwise
                 error('Undefined OPT_BANDS_IGNORE_INIT %s',opt_bands_ignore_init);
         end
@@ -619,7 +620,7 @@ switch weight_mode
         
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         mad_rr_band_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
         res_exp = Yif - Ymdl;
         mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
@@ -736,7 +737,7 @@ switch weight_mode
         end
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         mad_rr_theor = stdl1_ifdf+photon_noise_mad_stdif;
         res_exp = Yif - Ymdl;
         % mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,...
@@ -751,7 +752,11 @@ switch weight_mode
         if ffc_mode
             res_exp_scaled = res_exp./exp(logT);
         else
-            res_exp_scaled = res_exp./exp(logt_est*X(idxAlogT,:));
+            if batch
+                res_exp_scaled = res_exp./exp(pagefun(@mtimes,logt_est,X(idxAlogT,:,:)));
+            else
+                res_exp_scaled = res_exp./exp(logt_est*X(idxAlogT,:));
+            end
         end
         logYif_isnan_spk = abs(res_exp_scaled)>0.003; % conservative choice
         
@@ -837,7 +842,7 @@ else
 end
 lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
 lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
-cff = resNewNrm/resNrm;
+cff = resNewNrm./resNrm;
 % lambda_c = lambda_c.* (resNewNrm ./ resNrm);
 % lambda_c_ori = lambda_c_ori.* (resNewNrm ./ resNrm);
 
@@ -1006,7 +1011,7 @@ for n=2:nIter
             
             RDimg = if2rd(Ymdl,SFimg,lbl);
             [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
             res_exp = Yif - Ymdl;
             mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
             mad_rr_band = max(mad_rr_band_theor,mad_rr_band_prac);
@@ -1021,7 +1026,11 @@ for n=2:nIter
             if ffc_mode
                 res_exp_scaled = res_exp./exp(logt_est);
             else
-                res_exp_scaled = res_exp./(exp(A(:,idxAlogT))*X(idxAlogT,:));
+                if batch
+                    res_exp_scaled = res_exp./(exp(pagefun(@mtimes,A(:,idxAlogT,:),X(idxAlogT,:,:))));
+                else
+                    res_exp_scaled = res_exp./(exp(A(:,idxAlogT))*X(idxAlogT,:));
+                end
             end
             logYif_isnan_spk = abs(res_exp_scaled)>0.0015;
             
@@ -1171,7 +1180,7 @@ for n=2:nIter
     end
     lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
     lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
-    cff = cff .* resNewNrm/resNrm;
+    cff = cff .* resNewNrm./resNrm;
     
     logYif_isnan_c = logYif_isnan;
     logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:),...
