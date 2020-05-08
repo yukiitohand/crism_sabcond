@@ -490,7 +490,7 @@ switch upper(PROC_MODE)
 end
 
 %% INPUT Image options
-[ yyyy_doy,obs_classType ] = searchOBSID2YYYY_DOY(obs_id);
+[ yyyy_doy,obs_classType ] = crism_searchOBSID2YYYY_DOY_v2(obs_id);
 switch obs_classType
     case {'FRT','HRL','HRS'}
         obs_counter = '07';
