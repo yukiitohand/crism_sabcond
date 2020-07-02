@@ -41,7 +41,9 @@ function [Alib,infoA,option] = crism_load_lib(libname,opt,wabasename,c,varargin)
 %      option: option for the 
 %   crism_libConvoluter('CRISMTypeLib',2,'METHOD','interp1','WV_BIN','3');
 
-global localCRISM_PDSrootDir
+global crism_env_vars
+localCRISM_PDSrootDir = crism_env_vars.localCRISM_PDSrootDir;
+
 if nargin<4
     fprintf('Usage: [Alib,infoA,option] = crism_load_lib(libname,opt,wabasename,c,varargin)\n');
     return;
