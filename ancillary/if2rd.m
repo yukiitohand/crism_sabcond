@@ -9,7 +9,7 @@ function [RD] = if2rd(IoF,SF,lbl)
 %  Output Parameters
 %   RD : Radiance cube [L x S x B]
 
-d_km = lbl.SOLAR_DISTANCE{1};
+d_km = lbl.SOLAR_DISTANCE.value;
 [ d_au ] = km2au( d_km );
 RD = IoF .* ( SF / (pi*(d_au)^2) );
 
