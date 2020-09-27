@@ -81,6 +81,7 @@ sensor_id = 'L';
 vr = '3';
 wabasename = '';
 cList = [];
+pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/');
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -91,6 +92,8 @@ else
                 overwrite = varargin{i+1};
             case 'WARN_OVERWRITE'
                 warn_overwrite = varargin{i+1};
+            case 'CACHE_PDIRPATH'
+                pdir_cache = varargin{i+1};
             case 'METHOD'
                 method = varargin{i+1};
             case 'RETAINRATIO'
@@ -169,7 +172,7 @@ switch libname
 end
 
 % setups.retainRatio = retainRatio;
-pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/');
+% spdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/');
 if isempty(wabasename)
     [ propWAptr ] = create_propCDR4basename( 'Acro','WA','BINNING',binning,'SENSOR_ID',sensor_id,'Version',vr);
     [WAbasenameList,~] = getCDRbasenames_v2(propWAptr);
