@@ -531,8 +531,8 @@ if is_debug
     else
         Xtc = sum(X(idxAlogT,:,:),1);
     end
-    logYif_cor_test = logYif - logT * Xtc;
-    ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+    logYif_cor_test = logYif - logT * Xtc - A(:,idxAice)*X(idxAice,:);
+    ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
     bg = C*Z;
     ygood_1nan = convertBoolTo1nan(~logYif_isnan);
     ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -767,7 +767,7 @@ switch weight_mode
 end
 
 if is_debug
-    logYif_cor_test = logYif - logt_est * Xtc;
+    logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
     logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
     logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
@@ -790,6 +790,7 @@ if is_debug
         plot(ax_res,RR_bad_1nan,'x'); 
     end
     drawnow;
+    keyboard;
 end
 
 
@@ -957,8 +958,8 @@ for n=2:nIter
         else
             Xtc = sum(X(idxAlogT,:,:),1);
         end
-        logYif_cor_test = logYif - logt_est * Xtc;
-        ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
         bg = C*Z;
         ygood_1nan = convertBoolTo1nan(~logYif_isnan);
         ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -1131,7 +1132,7 @@ for n=2:nIter
     end
     
     if is_debug
-        logYif_cor_test = logYif - logt_est * Xtc;
+        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
         logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
         logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
@@ -1154,6 +1155,7 @@ for n=2:nIter
             plot(ax_res,RR_bad_1nan,'x'); 
         end
         drawnow;
+        keyboard;
     end
     
     switch upper(lambda_update_rule)
@@ -1240,8 +1242,8 @@ if is_debug
     else
         Xtc = sum(X(idxAlogT,:,:),1);
     end
-    logYif_cor_test = logYif - logt_est * Xtc;
-    ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+    logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+    ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
     bg = C*Z;
     ygood_1nan = convertBoolTo1nan(~logYif_isnan);
     ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -1268,6 +1270,7 @@ if is_debug
         plot(ax_res,RR_bad_1nan,'x'); 
     end
     drawnow;
+    keyboard;
 end
 
 
