@@ -987,7 +987,7 @@ for i=1:length(varargin_T)
     end
     fprintf(' %s', string_varargin_T);
 end
-fprintf('\n');
+fprintf(fid, '\n');
 
 % ## LIBRARY OPTIONS #-----------------------------------------------------
 fprintf(fid,'CNTRMVL: %d\n',cntRmvl);
