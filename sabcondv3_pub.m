@@ -93,7 +93,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       (default) false
 %   'ADDITIONAL_SUFFIX': any string,
 %       any additional suffix added to the name of processd images.
-%       (default) 'v1'
+%       (default) ''
 %   'INTERLEAVE_OUT': string, {'lsb','bls'}
 %       interleave option of the images in the output parameter, out. This
 %       is not the interleave used for saving processed images. 
@@ -1018,6 +1018,7 @@ if save_file
     % hdr, mimics CAT file production
     hdr_cr = crism_const_cathdr(TRRIFdata,true,'DATE_TIME',dt);
     hdr_cr.cat_history = suffix;
+    
     switch opt_img
         case 'if'
             hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
@@ -1028,6 +1029,11 @@ if save_file
         otherwise
             error('opt_img = %s is not defined',opt_img);
     end
+    
+    % update bbl
+    bbl = false(1,bands);
+    bbl(bands) = true;
+    hdr_cr.bbl = bbl;
 
     %% saving
     fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.hdr']));
@@ -1107,6 +1113,20 @@ if save_file
     envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
     fprintf('Done\n');
 end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Desmiling
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Desmiling is performed by simple linear interpolation.
+% Only performed for continuous data over the bands.
+fprintf('Performing de-smiling ...\n');
+sabcond_nr = CRISMdataCAT(basename_cr_nr,save_dir);
+desmile_crism(sabcond_nr,bands,'save_pdir',save_outpdir);
+sabcond_ab = CRISMdataCAT(basename_AB,save_dir);
+desmile_crism(sabcond_ab,bands,'save_pdir',save_outpdir);
+sabcond_bg = CRISMdataCAT(basename_Bg,save_dir);
+desmile_crism(sabcond_bg,bands,'save_pdir',save_outpdir);
+fprintf('All de-smiling finished\n');
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % % gaussian filter
