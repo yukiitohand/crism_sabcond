@@ -935,11 +935,12 @@ fprintf('Processing time is %s\n',tend-tstart);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % save results
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-fprintf('Now saving...\n');
+
 
 %% Write a setting file.
 fname = [basename_cr '_settings.txt'];
 if save_file
+    fprintf('Now saving...\n');
     fid = fopen(joinPath(save_dir,fname),'w');
 else
     fid = 1; % standard output
@@ -1031,7 +1032,7 @@ if save_file
     end
     
     % update bbl
-    bbl = false(1,bands);
+    bbl = false(1,hdr_cr.bands);
     bbl(bands) = true;
     hdr_cr.bbl = bbl;
 
@@ -1119,14 +1120,21 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Desmiling is performed by simple linear interpolation.
 % Only performed for continuous data over the bands.
-fprintf('Performing de-smiling ...\n');
-sabcond_nr = CRISMdataCAT(basename_cr_nr,save_dir);
-desmile_crism(sabcond_nr,bands,'save_pdir',save_outpdir);
-sabcond_ab = CRISMdataCAT(basename_AB,save_dir);
-desmile_crism(sabcond_ab,bands,'save_pdir',save_outpdir);
-sabcond_bg = CRISMdataCAT(basename_Bg,save_dir);
-desmile_crism(sabcond_bg,bands,'save_pdir',save_outpdir);
-fprintf('All de-smiling finished\n');
+if save_file
+    
+    fprintf('Performing de-smiling ...\n');
+    WA = squeeze(WAdata.img(:,:,:))';
+    sabcond_nr = CRISMdataCAT(basename_cr_nr,save_dir);
+    sabcond_nr.wa = WA;
+    desmile_crism(sabcond_nr,bands);
+    sabcond_ab = CRISMdataCAT(basename_AB,save_dir);
+    sabcond_ab.wa = WA;
+    desmile_crism(sabcond_ab,bands);
+    sabcond_bg = CRISMdataCAT(basename_Bg,save_dir);
+    sabcond_bg.wa = WA;
+    desmile_crism(sabcond_bg,bands);
+    fprintf('All de-smiling finished\n');
+end
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % % gaussian filter
