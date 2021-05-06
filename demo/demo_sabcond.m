@@ -1,5 +1,5 @@
 % demo script for performing atmospheric correction and de-noising
-
+crism_init;
 
 % Enter the list of observation IDs.
 obs_id_list = {'16A73'};
