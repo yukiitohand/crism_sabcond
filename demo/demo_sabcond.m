@@ -2,7 +2,7 @@
 crism_init;
 
 % Enter the list of observation IDs.
-obs_id_list = {'16A73'};
+obs_id_list = {'9036'};
 
 %%
 % Download images and calibration.
@@ -34,7 +34,7 @@ precision  = 'single';
 % {'single','double'}
 % in my test, single was much faster and result is quite similar.
 
-PROC_MODE  = 'GPU_BATCH_2'; 
+proc_mode  = 'GPU_BATCH_2'; 
 % {'CPU_1','GPU_1','CPU_2','GPU_2','GPU_BATCH_2'}
 % 'GPU_BATCH_2' is the fastest mode, if GPU is not used by others.
 % Slightly different algorithms between {'CPU_1','GPU_1'} and 
@@ -64,7 +64,7 @@ force = 0;
 % to continue and overwrite images or not when there alreadly exist 
 % processed images.
 
-skip_if_exist = 1;
+skip_ifexist = 1;
 % Boolean
 % if true, processing will be automatically skipped if there already exist 
 % processed images. No prompt asking whether or not to continue and 
