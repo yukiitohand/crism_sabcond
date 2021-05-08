@@ -404,7 +404,7 @@ end
 
 % determine batch size for each PROC_MODE----------------------------------
 switch upper(PROC_MODE)
-    case {'CPU_2','GPU_2'}
+    case {'CPU_1','CPU_2','GPU_2'}
         batch_size = 1;
     case {'GPU_BATCH_2'}
         
