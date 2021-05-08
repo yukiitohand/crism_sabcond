@@ -43,14 +43,14 @@ A = ifov_cross_track*ifov_along_track; %[m^2] area from which the light is commi
 
 % get integration time
 integ_t = lbl.MRO_EXPOSURE_PARAMETER;
-rateHz = lbl.MRO_FRAME_RATE{1};
+rateHz = lbl.MRO_FRAME_RATE.value;
 [tms] = get_integrationTime(integ_t,rateHz,'Hz');
 tsec = tms/1000; %[s] integration time 
 
 
 WA_m = WA_nm * (10.^(-9)); % [m] converting to meters
 
-d_km = lbl.SOLAR_DISTANCE{1};
+d_km = lbl.SOLAR_DISTANCE.value;
 [ d_au ] = km2au( d_km );
 
 photon_cts = RDimg .* (A*sr*tsec).* WA_um_pitch ./ ((h_planck.*c_light)./WA_m) .* eta;
