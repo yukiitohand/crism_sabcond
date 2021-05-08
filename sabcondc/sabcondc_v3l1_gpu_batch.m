@@ -519,10 +519,10 @@ switch weight_mode
 
     case 1
         if batch
-            Ymdl = exp(log(Ymdl) - pagefun(@mtimes,logT,X(idxlogT,:,:)) ...
+            Ymdl = exp(log(Ymdl) - pagefun(@mtimes,logT,X(idxAlogT,:,:)) ...
                 + pagefun(@mtimes,logt_est,Xtc));
         else
-            Ymdl = exp(log(Ymdl) - logT*X(idxlogT,:,:) + logt_est*Xtc);
+            Ymdl = exp(log(Ymdl) - logT*X(idxAlogT,:,:) + logt_est*Xtc);
         end
         RDimg = if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
