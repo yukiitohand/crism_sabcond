@@ -95,7 +95,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       (default) false
 %   'ADDITIONAL_SUFFIX': any string,
 %       any additional suffix added to the name of processd images.
-%       (default) 'v1'
+%       (default) ''
 %   'INTERLEAVE_OUT': string, {'lsb','bls'}
 %       interleave option of the images in the output parameter, out. This
 %       is not the interleave used for saving processed images. 
@@ -431,7 +431,7 @@ end
 
 % determine batch size for each PROC_MODE----------------------------------
 switch upper(PROC_MODE)
-    case {'CPU_2','GPU_2','CPU_3','GPU_3','CPU_4','GPU_4'}
+    case {'CPU_1','CPU_2','GPU_2','CPU_3','GPU_3','CPU_4','GPU_4'}
         batch_size = 1;
     case {'GPU_BATCH_2','GPU_BATCH_3','GPU_BATCH_4'}
         
@@ -1085,11 +1085,12 @@ fprintf('Processing time is %s\n',tend-tstart);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % save results
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-fprintf('Now saving...\n');
+
 
 %% Write a setting file.
 fname = [basename_cr '_settings.txt'];
 if save_file
+    fprintf('Now saving...\n');
     fid = fopen(joinPath(save_dir,fname),'w');
 else
     fid = 1; % standard output
@@ -1142,7 +1143,7 @@ for i=1:length(varargin_T)
     end
     fprintf(' %s', string_varargin_T);
 end
-fprintf('\n');
+fprintf(fid, '\n');
 
 % ## LIBRARY OPTIONS #-----------------------------------------------------
 fprintf(fid,'CNTRMVL: %d\n',cntRmvl);
@@ -1227,6 +1228,7 @@ if save_file
     % hdr, mimics CAT file production
     hdr_cr = crism_const_cathdr(TRRIFdata,true,'DATE_TIME',dt);
     hdr_cr.cat_history = suffix;
+    
     switch opt_img
         case 'if'
             hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
@@ -1237,6 +1239,11 @@ if save_file
         otherwise
             error('opt_img = %s is not defined',opt_img);
     end
+    
+    % update bbl
+    bbl = false(1,hdr_cr.bands);
+    bbl(bands) = true;
+    hdr_cr.bbl = bbl;
 
     %% saving
     fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.hdr']));
@@ -1326,6 +1333,27 @@ if save_file
     fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
     envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
     fprintf('Done\n');
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Desmiling
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Desmiling is performed by simple linear interpolation.
+% Only performed for continuous data over the bands.
+if save_file
+    
+    fprintf('Performing de-smiling ...\n');
+    WA = squeeze(WAdata.img(:,:,:))';
+    sabcond_nr = CRISMdataCAT(basename_cr_nr,save_dir);
+    sabcond_nr.wa = WA;
+    desmile_crism(sabcond_nr,bands);
+    sabcond_ab = CRISMdataCAT(basename_AB,save_dir);
+    sabcond_ab.wa = WA;
+    desmile_crism(sabcond_ab,bands);
+    sabcond_bg = CRISMdataCAT(basename_Bg,save_dir);
+    sabcond_bg.wa = WA;
+    desmile_crism(sabcond_bg,bands);
+    fprintf('All de-smiling finished\n');
 end
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
