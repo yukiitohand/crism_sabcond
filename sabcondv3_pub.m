@@ -477,9 +477,10 @@ switch upper(opt_img)
         basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
     case {'TRRY','TRRB','TRRC','TRRD'}
         trr_vr = opt_img(4);
-        prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
-        prop.version = trr_vr;
-        basenameTRRY = get_basenameOBS_fromProp(prop);
+        basenameTRRY = crism_get_TRRXbasename(TRRIFdata,trr_vr);
+        % prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
+        % prop.version = trr_vr;
+        % basenameTRRY = get_basenameOBS_fromProp(prop);
         basename_cr = [basenameTRRY suffix];
     otherwise
         error('opt_img = %s is not defined',opt_img);
@@ -641,7 +642,7 @@ switch weight_mode
                 propDF1_IF.activity_id = 'IF';
                 propDF1_IF.product_type = 'TRR';
                 propDF1_IF.version = trr_vr;
-                bnameDF1_IF = get_basenameOBS_fromProp(propDF1_IF);
+                bnameDF1_IF = crism_get_basenameOBS_fromProp(propDF1_IF);
                 load(joinPath(d_IoF,[bnameDF1_IF '.mat']),'IoF_bk1_o');
                 IoF_bk1_o = flip(IoF_bk1_o,3);
                 IoF_bk1_o = permute(IoF_bk1_o,[3,1,2]);
@@ -651,7 +652,7 @@ switch weight_mode
                         propDF2_IF.activity_id = 'IF';
                         propDF2_IF.product_type = 'TRR';
                         propDF2_IF.version = trr_vr;
-                        bnameDF2_IF = get_basenameOBS_fromProp(propDF2_IF);
+                        bnameDF2_IF = crism_get_basenameOBS_fromProp(propDF2_IF);
                         load(joinPath(d_IoF,[bnameDF2_IF '.mat']),'IoF_bk2_o');
                         IoF_bk2_o = flip(IoF_bk2_o,3);
                         IoF_bk2_o = permute(IoF_bk2_o,[3,1,2]);
