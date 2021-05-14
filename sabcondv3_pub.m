@@ -534,21 +534,21 @@ fprintf('finish loading Image\n');
 %%
 % read bad pixel
 if isempty(DFdata2)
-    [BPdata1,BPdata2,BPdata_post] = load_BPdataSC_fromDF(...
+    [BPdata1,BPdata2,BPdata_post] = crism_load_BPdataSC_fromDF(...
         TRRIFdata,DFdata1.basename,[]);
 else
-    [BPdata1,BPdata2,BPdata_post] = load_BPdataSC_fromDF(...
+    [BPdata1,BPdata2,BPdata_post] = crism_load_BPdataSC_fromDF(...
         TRRIFdata,DFdata1.basename,DFdata2.basename);
 end
 switch lower(optBP)
     case 'pri'
-        [BP1nan] = formatBPpri1nan(BPdata1,BPdata2,'band_inverse',true);
-        [GP1nan] = convertBP1nan2GP1nan(BP1nan);
+        [BP1nan] = crism_formatBPpri1nan(BPdata1,BPdata2,'band_inverse',true);
+        [GP1nan] = crism_convertBP1nan2GP1nan(BP1nan);
         GP1nan = permute(GP1nan(bands,:,:),[1,3,2]);
         BP1nan = permute(BP1nan(bands,:,:),[1,3,2]);
     case 'all'
-        [BP1nan] = formatBP1nan(BPdata_post,'band_inverse',true);
-        [GP1nan] = convertBP1nan2GP1nan(BP1nan);
+        [BP1nan] = crism_formatBP1nan(BPdata_post,'band_inverse',true);
+        [GP1nan] = crism_convertBP1nan2GP1nan(BP1nan);
         GP1nan = permute(GP1nan(bands,:,:),[1,3,2]);
         BP1nan = permute(BP1nan(bands,:,:),[1,3,2]);
     case 'none'
@@ -640,7 +640,7 @@ end
 %% read ADR transmission data
 switch t_mode
     case {1,2,3}
-        [ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
+        [ at_trans ] = crism_load_ADR_VS('BINNING',WAdata.prop.binning,...
                                    'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
     case {4}
         sclk_img = (TRRIFdata.get_sclk_start()+TRRIFdata.get_sclk_stop())/2;
