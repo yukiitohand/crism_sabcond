@@ -34,7 +34,7 @@ storage_saving_level = 'Highest';
 %    Highest - Only nr_ds and mdl_ds are saved, bands are also scropped.
 % (default) Normal
 
-save_pdir = '';
+save_pdir = './resu/';
 % character, string
 % root directory path where the processed data are stored. The processed 
 % image will be saved at <SAVE_PDIR>/CCCNNNNNNNN, where CCC the class type 
