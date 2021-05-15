@@ -45,7 +45,7 @@ batch_size = 10;
 % 'GPU_BATCH_*' mode is selected.
 
 % ## I/O OPTIONS #---------------------------------------------------------
-save_pdir = '';
+save_pdir = './resu/';
 % character, string
 % root directory path where the processed data are stored. The processed 
 % image will be saved at <SAVE_PDIR>/CCCNNNNNNNN, where CCC the class type 

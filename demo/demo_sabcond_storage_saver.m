@@ -151,7 +151,7 @@ for i=1:length(obs_id_list)
     % fnamesCDR_local gets the filenames of all the relevant CDR files
     % existing in the local storage (used for deleting once the processing
     % is done)
-    TRRIFdata = CRISMdata(crism_obs.info.basenameIF,crism_obs.info.dir_trdr);
+    TRRIFdata = CRISMdata(crism_obs_info.basenameIF,crism_obs_info.dir_trdr);
     [fnamesCDR_local] = TRRIFdata.load_basenamesCDR('Dwld',2,'INDEX_CACHE_UPDATE',true);
     
     %---------------------------------------------------------------------%
@@ -161,7 +161,7 @@ for i=1:length(obs_id_list)
     % supported with mode=yuki2. yuki3 and yuki4 may need additional data
     % to be downloaded.
     [Yif] = crism_calibration_IR_v2(obs_id,'save_memory',true,'mode','yuki2', ...
-        'version','B','skip_ifexist',0,'force',1, 'Dwld',0);
+        'version','B','skip_ifexist',0,'force',1, 'Dwld',0,'save_file',0);
     
     %---------------------------------------------------------------------%
     % Atmospheric correction and denoising.
