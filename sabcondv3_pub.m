@@ -70,11 +70,11 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       whether or not to save processed images. If true, two optioal 
 %       parameters 'FORCE','SKIP_IFEXIST' have no effect.
 %       (default) true
-%   'STORAGE_SAVING_LEVEL': string, number
-%       determine how much to save storage, no effect uder save_file=1
+%   'STORAGE_SAVING_LEVEL': string
+%       determine how much to save storage, no effect under save_file=1
 %       Normal  - All the byproducts are saved
 %       Highest - Only nr_ds and mdl_ds are saved, bands are also scropped.
-%       (default) Highest
+%       (default) Normal
 %   'SAVE_PDIR': any string
 %       root directory path where the processed data are stored. The
 %       processed image will be saved at <SAVE_PDIR>/CCCNNNNNNNN, where CCC
@@ -122,16 +122,6 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       (default) false
 %
 %  ## INPUT IMAGE OPTIONS #------------------------------------------------
-%   'OBS_COUNTER_SCENE': string
-%        regular expression to match observation counter, such as
-%        '0[13]{1}', observation counter for scene measurements.
-%        (default) depends on observation type
-%   'OBS_COUNTER_DF': 
-%        regular expression to match observation counter, such as
-%        '0[13]{1}', observation counter for dark frame measurements.
-%        (default) depends on observation type
-%
-%  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'OPT_IMG': string, {'IF','RA_IF','TRRY','TRRB','TRRC'}
 %       type of input image to be used
 %       (default) 'TRRB'
@@ -151,6 +141,16 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       Observation counter of the image to be processed. Used only for 
 %       processing FFC images. 
 %       (default) 1
+%   'OBS_COUNTER_SCENE': string
+%        regular expression to match observation counter, such as
+%        '0[13]{1}', observation counter for scene measurements.
+%        (default) depends on observation type
+%   'OBS_COUNTER_DF': 
+%        regular expression to match observation counter, such as
+%        '0[13]{1}', observation counter for dark frame measurements.
+%        (default) depends on observation type
+%
+%  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'BANDS_OPT' : integer, {4}
 %       an option for wavelength channels to use. This is the 
 %       input for genBands()
@@ -292,15 +292,15 @@ storage_saving_level = 'NORMAL';
 do_crop_bands      = false;
 
 % ## INPUT IMAGE OPTIONS #-------------------------------------------------
-OBS_COUNTER_SCENE_custom = 0;
-OBS_COUNTER_DF_custom = 0;
-
-% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 opt_img      = 'TRRB';
 img_cube     = [];
 img_cube_band_inverse = [];
 dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
 ffc_counter  = 1;
+OBS_COUNTER_SCENE_custom = 0;
+OBS_COUNTER_DF_custom = 0;
+
+% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 bands_opt    = 4;
 line_idxes   = [];                     % LINES
 column_idxes = [];
@@ -379,14 +379,6 @@ else
                 do_crop_bands = varargin{i+1};
                 
             % ## INPUT IMAGE OPTiONS #-------------------------------------
-            case 'OBS_COUNTER_SCENE'
-                obs_counter_tmp = varargin{i+1};
-                OBS_COUNTER_SCENE_custom = 1;
-            case 'OBS_COUNTER_DF'
-                obs_counter_df_tmp = varargin{i+1};
-                OBS_COUNTER_DF_custom = 1;
-                
-            % ## GENERAL SABCOND OPTIONS #---------------------------------
             case 'OPT_IMG'
                 opt_img = varargin{i+1};
             case 'IMG_CUBE'
@@ -397,6 +389,14 @@ else
                 dir_yuk = varargin{i+1};
             case 'FFC_IF_COUNTER'
                 ffc_counter = varargin{i+1};
+            case 'OBS_COUNTER_SCENE'
+                obs_counter_tmp = varargin{i+1};
+                OBS_COUNTER_SCENE_custom = 1;
+            case 'OBS_COUNTER_DF'
+                obs_counter_df_tmp = varargin{i+1};
+                OBS_COUNTER_DF_custom = 1;
+                
+            % ## GENERAL SABCOND OPTIONS #---------------------------------
             case 'BANDS_OPT'
                 bands_opt = varargin{i+1};
             case {'LINES','LLS'}
@@ -1299,15 +1299,15 @@ fprintf(fid,'ALIB_OUT: %d\n',Alib_out);
 fprintf(fid,'CROP_BANDS: %d\n',do_crop_bands);
 
 % ## INPUT IMAGE OPTIONS #-------------------------------------------------
-fprintf(fid,'OBS_COUNTER: %d\n', obs_counter);
-fprintf(fid,'OBS_COUNTER_DF: %d\n', obs_counter_df);
-
-% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 fprintf(fid,'OPT_IMG: %s\n',opt_img);
 fprintf(fid,'IMG_CUBE is empty: %s',img_cube_isempty);
 fprintf(fid,'IMG_CUBE_BAND_INVERSE: %d',img_cube_band_inverse);
 fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
 fprintf(fid,'FFC_IF_COUNTER: %d\n',ffc_counter);
+fprintf(fid,'OBS_COUNTER: %d\n', obs_counter);
+fprintf(fid,'OBS_COUNTER_DF: %d\n', obs_counter_df);
+
+% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 fprintf(fid,'BANDS_OPT: %d\n',bands_opt);
 fprintf(fid,'LINES:'); fprintf(fid,' %d',line_idxes); fprintf(fid, '\n');
 fprintf(fid,'COLUMNS:'); fprintf(fid,' %d',column_idxes); fprintf(fid, '\n');
@@ -1386,17 +1386,15 @@ settings.interleave_out = interleave_out;
 settings.subset_columns_out = subset_columns_out;
 settings.Alib_out = Alib_out;
 settings.crop_bands = do_crop_bands;
-
 % ## INPUT IMAGE OPTIONS #-------------------------------------------------
-settings.obs_counter = obs_counter;
-settings.obs_counter_df = obs_counter_df;
-
-% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 settings.opt_img = opt_img;
 settings.img_cube_isempty = img_cube_isempty;
 settings.img_cube_band_inverse = img_cube_band_inverse;
 settings.trry_pdir = dir_yuk;
 settings.ffc_if_counter = ffc_counter;
+settings.obs_counter = obs_counter;
+settings.obs_counter_df = obs_counter_df;
+% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 settings.bands_opt = bands_opt;
 settings.lines = line_idxes;
 settings.columns = column_idxes;
