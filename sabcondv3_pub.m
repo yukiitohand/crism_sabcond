@@ -1074,9 +1074,21 @@ if fid>1
     fclose(fid);
 end
 
-%%
-% SAVING OPERATIONS
-% hdr, mimics CAT file production
+
+%% Post processing
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% performing interpolation
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Yif_cor_nr = Yif_cor;
+Yif_mdl = AB_est .* Bg_est;
+nan_cells = isnan(Yif_cor);
+Yif_cor_nr(nan_cells) = Yif_mdl(nan_cells);
+
+Valid_pixels_good = double(Valid_pixels);
+Valid_pixels_good(Valid_pixels==0) = nan;
+for bi=1:nBall
+    Yif_cor_nr(:,:,bi) = Yif_cor_nr(:,:,bi) .* Valid_pixels_good;
+end
 
 % first construct ENVI header files
 hdr_cr = crism_const_cathdr(TRRIFdata,true,'DATE_TIME',dt);
@@ -1097,6 +1109,40 @@ switch opt_img
         error('opt_img = %s is not defined',opt_img);
 end
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Desmiling
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Desmiling is performed by simple linear interpolation.
+% Only performed for continuous data over the bands.
+fprintf('Performing de-smiling ...\n');
+wa = WAdata.img;
+[Yif_nr_ds] = crism_smile_correction(Yif_cor_nr,wa,hdr_cr.wavelength(:),bands);
+[Yifmdl_ds] = crism_smile_correction(Yif_mdl,wa,hdr_cr.wavelength(:),bands);
+[AB_est_ds] = crism_smile_correction(AB_est,wa,hdr_cr.wavelength(:),bands);
+[Bg_est_ds] = crism_smile_correction(Bg_est,wa,hdr_cr.wavelength(:),bands);
+
+%% Crop bands
+if do_crop_bands
+    Yif_cor     = Yif_cor(:,:,bands);
+    Yif_cor_ori = Yif_cor_ori(:,:,bands);
+    AB_est      = AB_est(:,:,bands);
+    Bg_est      = Bg_est(:,:,bands);
+    if ~isempty(opticelib)
+        Ice_est = Ice_est(:,:,bands);
+    end
+    Yif_nr_ds   = Yif_nr_ds(:,:,bands);
+    Yif_nr_ds   = Yif_nr_ds(:,:,bands);
+    Yifmdl_ds   = Yifmdl_ds(:,:,bands);
+    AB_est_ds   = AB_est_ds(:,:,bands);
+    Bg_est_ds   = Bg_est_ds(:,:,bands);
+    hdr_cr.wavlength = hdr_cr.wavlength(bands);
+    hdr_cr.fwhm  = hdr_cr.fwhm;
+    hdr_cr.bbl   = hdr_cr.bbl;
+    hdr_cr.bands = length(bands);
+end
+
+%% SAVING OPERATIONS
+% hdr, mimics CAT file production
 if save_file
     switch upper(storage_saving_level)
         case 'NORMAL'
@@ -1148,26 +1194,7 @@ if save_file
                 envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
                 fprintf('Done\n');
             end
-    end
-end
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% performing interpolation
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-Yif_cor_nr = Yif_cor;
-Yif_mdl = AB_est .* Bg_est;
-nan_cells = isnan(Yif_cor);
-Yif_cor_nr(nan_cells) = Yif_mdl(nan_cells);
-
-Valid_pixels_good = double(Valid_pixels);
-Valid_pixels_good(Valid_pixels==0) = nan;
-for bi=1:nBall
-    Yif_cor_nr(:,:,bi) = Yif_cor_nr(:,:,bi) .* Valid_pixels_good;
-end
-
-% replace NaN with interpolation from a model
-if save_file
-    switch upper(storage_saving_level)
-        case 'NORMAL'
+            
             basename_cr_nr = [basename_cr '_nr'];
             hdr_cr_nr = hdr_cr;
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
@@ -1179,35 +1206,7 @@ if save_file
             fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
             envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
             fprintf('Done\n');
-    end
-end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Desmiling
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Desmiling is performed by simple linear interpolation.
-% Only performed for continuous data over the bands.
-fprintf('Performing de-smiling ...\n');
-wa = WAdata.img;
-[Yif_nr_ds] = crism_smile_correction(Yif_cor_nr,wa,hdr_cr.wavelength(:),bands);
-[Yifmdl_ds] = crism_smile_correction(Yif_mdl,wa,hdr_cr.wavelength(:),bands);
-[AB_est_ds] = crism_smile_correction(AB_est,wa,hdr_cr.wavelength(:),bands);
-[Bg_est_ds] = crism_smile_correction(Bg_est,wa,hdr_cr.wavelength(:),bands);
-
-if do_crop_bands
-    Yif_nr_ds = Yif_nr_ds(:,:,bands);
-    Yifmdl_ds = Yifmdl_ds(:,:,bands);
-    AB_est_ds = AB_est_ds(:,:,bands);
-    Bg_est_ds = Bg_est_ds(:,:,bands);
-    hdr_cr.wavlength = hdr_cr.wavlength(bands);
-    hdr_cr.fwhm  = hdr_cr.fwhm;
-    hdr_cr.bbl   = hdr_cr.bbl;
-    hdr_cr.bands = length(bands);
-end
-
-if save_file
-    switch upper(storage_saving_level)
-        case 'NORMAL'
             basename_nr_ds = [basename_cr_nr '_ds'];
             hdr_nr_ds = hdr_cr_nr;
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
@@ -1262,8 +1261,6 @@ if save_file
             fprintf('Done\n');
     end
 end
-
-fprintf('All de-smiling finished\n');
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % % gaussian filter
