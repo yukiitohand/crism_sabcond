@@ -1204,8 +1204,8 @@ end
 logYif_cor(logYif_isnan) = nan;
 
 if batch
-    [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc,bp_est_bool]...
-        = gather(logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc,bp_est_bool);
+    [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,Xtc,badspc,bp_est_bool]...
+        = gather(logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,Xtc,badspc,bp_est_bool);
 else
 end
 
@@ -1217,4 +1217,3 @@ Xlib         = X(idxAlib,:,:);
 
 
 end
-
