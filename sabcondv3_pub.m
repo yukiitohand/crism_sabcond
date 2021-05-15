@@ -68,6 +68,11 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       whether or not to save processed images. If true, two optioal 
 %       parameters 'FORCE','SKIP_IFEXIST' have no effect.
 %       (default) true
+%   'STORAGE_SAVING_LEVEL: string, number
+%       determine how much to save storage, no effect uder save_file=1
+%       Normal  - All the byproducts are saved
+%       Highest - Only nr_ds and mdl_ds are saved, bands are also scropped.
+%       (default) Highest
 %   'SAVE_PDIR': any string
 %       root directory path where the processed data are stored. The
 %       processed image will be saved at <SAVE_PDIR>/CCCNNNNNNNN, where CCC
@@ -109,11 +114,23 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       whether or not to out to include the libraries used for the
 %       processing.
 %       (default) false
+%   'CROP_BANDS;: Boolean
+%       whether or not to crop unprocessed bands that are filled with NaN
+%       by default. Set to true if you set STORAGE_SAVING_LEVEL=Highest
+%       (default) false
 %
 %  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'OPT_IMG': string, {'IF','RA_IF','TRRY','TRRB','TRRC'}
 %       type of input image to be used
 %       (default) 'TRRB'
+%   'IMG_CUBE': image cube [L x S x B]
+%       if not empty, this input image will be used. if empty, Image 
+%       corresponding to 'OPT_IMG' is read
+%       from file. 
+%       (default) []
+%   'IMG_CUBE_BAND_INVERSE': boolean
+%       need this when you input 'IMG_CUBE' to clarify the image.
+%       (default) []
 %   'TRRY_PDIR': any string
 %       root directory path where {'TRRY','TRRB','TRRC'} images are stored.
 %       If you choose either {'IF', 'RA_IF'} for 'OPT_IMG', you do not need
@@ -234,9 +251,13 @@ interleave_out     = 'lsb';
 interleave_default = 'lsb';
 subset_columns_out = false;
 Alib_out           = false;
+storage_saving_level = 'NORMAL';
+do_crop_bands      = false;
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 opt_img      = 'TRRB';
+img_cube     = [];
+img_cube_band_inverse = [];
 dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
 ffc_counter  = 1;
 bands_opt    = 4;
@@ -285,6 +306,8 @@ else
             % ## I/O OPTIONS #---------------------------------------------
             case 'SAVE_FILE'
                 save_file = varargin{i+1};
+            case 'STORAGE_SAVING_LEVEL'
+                storage_saving_level = varargin{i+1};
             case 'SAVE_PDIR'
                 save_pdir = varargin{i+1};
             case 'SAVE_DIR_YYYY_DOY'
@@ -301,10 +324,16 @@ else
                 subset_columns_out = varargin{i+1};
             case 'ALIB_OUT'
                 Alib_out = varargin{i+1};
+            case 'CROP_BANDS'
+                do_crop_bands = varargin{i+1};
                 
             % ## GENERAL SABCOND OPTIONS #---------------------------------
             case 'OPT_IMG'
                 opt_img = varargin{i+1};
+            case 'IMG_CUBE'
+                img_cube = varargin{i+1};
+            case 'IMG_CUBE_BAND_INVERSE'
+                img_cube_band_inverse = varargin{i+1};
             case 'TRRY_PDIR'
                 dir_yuk = varargin{i+1};
             case 'FFC_IF_COUNTER'
@@ -379,6 +408,16 @@ if save_file && force && skip_ifexist
 end
 
 if save_file && ~exist(save_pdir,'dir'), mkdir(save_pdir); end
+
+switch upper(storage_saving_level)
+    case 'HIGHEST'
+        if ~do_crop_bands
+            if verbose
+                fprintf('crop_bands is always set to true with STORAGE_SAVING_LEVEL=HIGHEST\n');
+            end
+        end
+        do_crop_bands = true;
+end
 
 bands = genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
@@ -504,24 +543,44 @@ bBool = false(nBall,1); bBool(bands) = true;
 basenameWA = WAdata.basename;
 WAb = squeeze(WAdata.img(:,:,bands))';
 
-switch upper(opt_img)
-    case 'IF'
-        if TRRIF_is_empty
-            error('TRR I/F does not exist.');
-        else
-            Yif = TRRIFdata.readimgi();
+if isempty(img_cube)
+
+    switch upper(opt_img)
+        case 'IF'
+            if TRRIF_is_empty
+                error('TRR I/F does not exist.');
+            else
+                Yif = TRRIFdata.readimgi();
+            end
+        case 'RA_IF'
+            TRRRAIFdata = CRISMdataCAT([crism_obs.info.basenameRA '_IF'],crism_obs.info.dir_trdr,'ra_if');
+            Yif = TRRRAIFdata.readimgi();
+
+        case {'TRRY','TRRB','TRRC','TRRD'}
+            d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+            TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
+            Yif = TRRYIFdata.readimgi();
+
+        otherwise
+            error('opt_img = %s is not defined',opt_img);
+    end
+else
+    % You will perform log conversion, so cast them to double precision.
+    Yif = double(img_cube);
+    % Check the size of the image just in case.
+    [Lcube,Scube,Bcube] = size(Yif);
+    if Lcube~=nLall || Scube~=nCall || Bcube~=nBall
+        error('The size of "IMG_CUBE" is wrong');
+    end
+    % You need to specify the direction of the band of the image
+    if isempty(img_cube_band_inverse)
+        error('Specify "IMG_CUBE_BAND_INVERSE" when you enter "IMG_CUBE"');
+    else
+        if img_cube_band_inverse==0
+            Yif = flip(Yif,3);
         end
-    case 'RA_IF'
-        TRRRAIFdata = CRISMdataCAT([crism_obs.info.basenameRA '_IF'],crism_obs.info.dir_trdr,'ra_if');
-        Yif = TRRRAIFdata.readimgi();
-        
-    case {'TRRY','TRRB','TRRC','TRRD'}
-        d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
-        TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
-        Yif = TRRYIFdata.readimgi();
-        
-    otherwise
-        error('opt_img = %s is not defined',opt_img);
+    end
+    clear img_cube;
 end
 
 Yif = Yif(line_idxes,:,bands);
@@ -1015,78 +1074,8 @@ if fid>1
     fclose(fid);
 end
 
-%%
-if save_file
-    % hdr, mimics CAT file production
-    hdr_cr = crism_const_cathdr(TRRIFdata,true,'DATE_TIME',dt);
-    hdr_cr.cat_history = suffix;
-    
-    switch opt_img
-        case 'if'
-            hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
-        case 'ra_if'
-            hdr_cr.cat_input_files = [TRRRAIFdata.basename '_IF.IMG'];
-        case {'TRRY','TRRC','TRRB'}
-            hdr_cr.cat_input_files = [basenameTRRY '.IMG'];
-        otherwise
-            error('opt_img = %s is not defined',opt_img);
-    end
-    
-    % update bbl
-    bbl = false(1,hdr_cr.bands);
-    bbl(bands) = true;
-    hdr_cr.bbl = bbl;
 
-    %% saving
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.hdr']));
-    envihdrwritex(hdr_cr,joinPath(save_dir,[basename_cr '.hdr']),'OPT_CMOUT',false);
-    fprintf('Done\n');
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.img']));
-    envidatawrite(single(Yif_cor),joinPath(save_dir,[basename_cr '.img']),hdr_cr);
-    fprintf('Done\n');
-
-    basename_ori = [basename_cr '_ori'];
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.hdr']));
-    envihdrwritex(hdr_cr,joinPath(save_dir,[basename_ori '.hdr']),'OPT_CMOUT',false);
-    fprintf('Done\n');
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
-    envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
-    fprintf('Done\n');
-
-    fname_supple = joinPath(save_dir,[basename_cr '.mat']);
-    wa = WAdata.img;
-    wa = squeeze(wa)';
-    fprintf('Saving %s ...\n',fname_supple);
-    save(fname_supple,'wa','bands','line_idxes','T_est','BP','GP',...
-        'ancillaries','Valid_pixels');
-    fprintf('Done\n');
-
-    basename_Bg = [basename_cr '_Bg'];
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
-    envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
-    fprintf('Done\n');
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.img']));
-    envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
-    fprintf('Done\n');
-
-    basename_AB = [basename_cr '_AB'];
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
-    envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
-    fprintf('Done\n');
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
-    envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
-    fprintf('Done\n');
-
-    if ~isempty(opticelib)
-        basename_Ice = [basename_cr '_Ice'];
-        fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.hdr']));
-        envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
-        fprintf('Done\n');
-        fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
-        envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
-        fprintf('Done\n');
-    end
-end
+%% Post processing
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % performing interpolation
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1101,19 +1090,23 @@ for bi=1:nBall
     Yif_cor_nr(:,:,bi) = Yif_cor_nr(:,:,bi) .* Valid_pixels_good;
 end
 
-% replace NaN with interpolation from a model
-if save_file
-    basename_cr_nr = [basename_cr '_nr'];
-    hdr_cr_nr = hdr_cr;
-    dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
-    hdr_cr_nr.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
-    hdr_cr_nr.cat_history = [hdr_cr_nr.cat_history '_nr'];
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.hdr']));
-    envihdrwritex(hdr_cr_nr,joinPath(save_dir,[basename_cr_nr '.hdr']),'OPT_CMOUT',false);
-    fprintf('Done\n');
-    fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
-    envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
-    fprintf('Done\n');
+% first construct ENVI header files
+hdr_cr = crism_const_cathdr(TRRIFdata,true,'DATE_TIME',dt);
+hdr_cr.cat_history = suffix;
+% update bbl
+bbl = false(1,hdr_cr.bands);
+bbl(bands) = true;
+hdr_cr.bbl = bbl;
+
+switch opt_img
+    case 'if'
+        hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
+    case 'ra_if'
+        hdr_cr.cat_input_files = [TRRRAIFdata.basename '_IF.IMG'];
+    case {'TRRY','TRRC','TRRB'}
+        hdr_cr.cat_input_files = [basenameTRRY '.IMG'];
+    otherwise
+        error('opt_img = %s is not defined',opt_img);
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1121,20 +1114,152 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Desmiling is performed by simple linear interpolation.
 % Only performed for continuous data over the bands.
+fprintf('Performing de-smiling ...\n');
+wa = WAdata.img;
+[Yif_nr_ds] = crism_smile_correction(Yif_cor_nr,wa,hdr_cr.wavelength(:),bands);
+[Yifmdl_ds] = crism_smile_correction(Yif_mdl,wa,hdr_cr.wavelength(:),bands);
+[AB_est_ds] = crism_smile_correction(AB_est,wa,hdr_cr.wavelength(:),bands);
+[Bg_est_ds] = crism_smile_correction(Bg_est,wa,hdr_cr.wavelength(:),bands);
+
+%% Crop bands
+if do_crop_bands
+    Yif_cor     = Yif_cor(:,:,bands);
+    Yif_cor_ori = Yif_cor_ori(:,:,bands);
+    AB_est      = AB_est(:,:,bands);
+    Bg_est      = Bg_est(:,:,bands);
+    if ~isempty(opticelib)
+        Ice_est = Ice_est(:,:,bands);
+    end
+    Yif_nr_ds   = Yif_nr_ds(:,:,bands);
+    Yif_nr_ds   = Yif_nr_ds(:,:,bands);
+    Yifmdl_ds   = Yifmdl_ds(:,:,bands);
+    AB_est_ds   = AB_est_ds(:,:,bands);
+    Bg_est_ds   = Bg_est_ds(:,:,bands);
+    hdr_cr.wavlength = hdr_cr.wavlength(bands);
+    hdr_cr.fwhm  = hdr_cr.fwhm;
+    hdr_cr.bbl   = hdr_cr.bbl;
+    hdr_cr.bands = length(bands);
+end
+
+%% SAVING OPERATIONS
+% hdr, mimics CAT file production
 if save_file
-    
-    fprintf('Performing de-smiling ...\n');
-    WA = squeeze(WAdata.img(:,:,:))';
-    sabcond_nr = CRISMdataCAT(basename_cr_nr,save_dir);
-    sabcond_nr.wa = WA;
-    desmile_crism(sabcond_nr,bands);
-    sabcond_ab = CRISMdataCAT(basename_AB,save_dir);
-    sabcond_ab.wa = WA;
-    desmile_crism(sabcond_ab,bands);
-    sabcond_bg = CRISMdataCAT(basename_Bg,save_dir);
-    sabcond_bg.wa = WA;
-    desmile_crism(sabcond_bg,bands);
-    fprintf('All de-smiling finished\n');
+    switch upper(storage_saving_level)
+        case 'NORMAL'
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.hdr']));
+            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_cr '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.img']));
+            envidatawrite(single(Yif_cor),joinPath(save_dir,[basename_cr '.img']),hdr_cr);
+            fprintf('Done\n');
+
+            basename_ori = [basename_cr '_ori'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.hdr']));
+            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_ori '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
+            envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
+            fprintf('Done\n');
+
+            fname_supple = joinPath(save_dir,[basename_cr '.mat']);
+            wa = WAdata.img;
+            wa = squeeze(wa)';
+            fprintf('Saving %s ...\n',fname_supple);
+            save(fname_supple,'wa','bands','line_idxes','T_est','BP','GP',...
+                'ancillaries','Valid_pixels');
+            fprintf('Done\n');
+
+            basename_Bg = [basename_cr '_Bg'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
+            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.img']));
+            envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
+            fprintf('Done\n');
+
+            basename_AB = [basename_cr '_AB'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
+            envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
+            envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
+            fprintf('Done\n');
+
+            if ~isempty(opticelib)
+                basename_Ice = [basename_cr '_Ice'];
+                fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.hdr']));
+                envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
+                fprintf('Done\n');
+                fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
+                envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
+                fprintf('Done\n');
+            end
+            
+            basename_cr_nr = [basename_cr '_nr'];
+            hdr_cr_nr = hdr_cr;
+            dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+            hdr_cr_nr.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
+            hdr_cr_nr.cat_history = [hdr_cr_nr.cat_history '_nr'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.hdr']));
+            envihdrwritex(hdr_cr_nr,joinPath(save_dir,[basename_cr_nr '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
+            envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
+            fprintf('Done\n');
+
+            basename_nr_ds = [basename_cr_nr '_ds'];
+            hdr_nr_ds = hdr_cr_nr;
+            dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+            hdr_nr_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
+            hdr_nr_ds.cat_history = [hdr_cr_nr.cat_history '_ds'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
+            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
+            envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
+            fprintf('Done\n');
+            
+            basename_Bg_ds = [basename_Bg '_ds'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.hdr']));
+            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_Bg_ds '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.img']));
+            envidatawrite(single(Bg_est_ds),joinPath(save_dir, [basename_Bg_ds '.img']),hdr_cr);
+            fprintf('Done\n');
+
+            basename_AB_ds = [basename_AB '_ds'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.hdr']));
+            envihdrwritex(hdr_nr_ds,joinPath(save_dir, [basename_AB_ds '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.img']));
+            envidatawrite(single(AB_est_ds),joinPath(save_dir, [basename_AB_ds '.img']),hdr_cr);
+            fprintf('Done\n');
+            
+        case 'HIGHEST'
+            basename_nr_ds = [basename_cr '_nr_ds'];
+            hdr_nr_ds = hdr_cr;
+            dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+            hdr_nr_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
+            hdr_nr_ds.cat_history = [hdr_cr.cat_history '_nr_ds'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
+            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
+            envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
+            fprintf('Done\n');
+            
+            basename_mdl_ds = [basename_cr '_mdl_ds'];
+            hdr_mdl_ds = hdr_cr;
+            dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+            hdr_mdl_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
+            hdr_mdl_ds.cat_history = [hdr_cr.cat_history '_mdl_ds'];
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.hdr']));
+            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_mdl_ds '.hdr']),'OPT_CMOUT',false);
+            fprintf('Done\n');
+            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.img']));
+            envidatawrite(single(Yifmdl_ds),joinPath(save_dir, [basename_mdl_ds '.img']),hdr_cr);
+            fprintf('Done\n');
+    end
 end
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
