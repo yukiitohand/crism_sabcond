@@ -81,11 +81,16 @@ bands_opt    = 4;
 % interleave_default = 'lsb';
 % subset_columns_out = false;
 % Alib_out           = false;
+% do_crop_bands      = false;
+
+%  ## INPUT IMAGE OPTIONS #------------------------------------------------
+opt_img      = 'TRRB';
+% img_cube     = [];
+% img_cube_band_inverse = [];
+% dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
+% ffc_counter  = 1;
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
-opt_img      = 'TRRB';
-% dir_yuk      = crism_env_vars.dir_YUK; % TRRX_PDIR
-% ffc_counter  = 1;
 % line_idxes   = [];                     % LINES
 % column_idxes = [];
 % mt           = 'sabcondpub_v1';        % METHODTYPE

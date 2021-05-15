@@ -5,24 +5,6 @@ crism_init;
 obs_id_list = {'9036'};
 
 %%
-% Download images and calibration.
-for i=1:length(obs_id_list)
-    obs_id = obs_id_list{i};
-    crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L','Download_DDR',2,...
-       'Download_EDRSCDF',2,'Download_TRRIF',2,'Download_TRRRA',2);
-       % 'Download_TER',2);
-end
-
-for i=1:length(obs_id_list)
-    obs_id = obs_id_list{i};
-    crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
-    TRRIFdata = CRISMdata(crism_obs.info.basenameIF,crism_obs.info.dir_trdr);
-    TRRIFdata.load_basenamesCDR('Dwld',2);
-    crism_calibration_IR_v2(obs_id,'save_memory',true,'mode','yuki2', ...
-        'version','B','skip_ifexist',0,'force',1);
-end
-
-%%
 % OPTIONS for sabcond
 %
 % -------------------------------------------------------------------------
@@ -45,6 +27,13 @@ batch_size = 10;
 % 'GPU_BATCH_*' mode is selected.
 
 % ## I/O OPTIONS #---------------------------------------------------------
+storage_saving_level = 'Highest';
+% string {'Highest','Normal'}
+% determine how much to save storage, no effect under save_file=1
+%    Normal  - All the byproducts are saved
+%    Highest - Only nr_ds and mdl_ds are saved, bands are also scropped.
+% (default) Normal
+
 save_pdir = '';
 % character, string
 % root directory path where the processed data are stored. The processed 
@@ -87,22 +76,16 @@ bands_opt    = 4;
 
 % ## I/O OPTIONS #---------------------------------------------------------
 % save_file          = true;
-% storage_saving_level = 'NORMAL';
 % additional_suffix  = '';
 % interleave_out     = 'lsb';
 % interleave_default = 'lsb';
 % subset_columns_out = false;
 % Alib_out           = false;
-% do_crop_bands      = false;
-
-%  ## INPUT IMAGE OPTIONS #------------------------------------------------
-opt_img      = 'TRRB';
-% img_cube     = [];
-% img_cube_band_inverse = [];
-% dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
-% ffc_counter  = 1;
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
+opt_img      = 'TRRB';
+% dir_yuk      = crism_env_vars.dir_YUK; % TRRX_PDIR
+% ffc_counter  = 1;
 % line_idxes   = [];                     % LINES
 % column_idxes = [];
 % mt           = 'sabcondpub_v1';        % METHODTYPE
@@ -135,35 +118,99 @@ nIter = 5;
 lambda_a = 0.01;
 
 
-%% Main routine
-
+%%
+% Download images and calibration.
+% You need to include all the processing before going to a next image.
 for i=1:length(obs_id_list)
     obs_id = obs_id_list{i};
+    
+    %---------------------------------------------------------------------%
+    % Download images
+    %---------------------------------------------------------------------%
+    % First download images and labels from the observation folder.
+    % EDR SC DF images, DDR images, LBL of TRR3 I/F RA, and TRR3 HKP files
+    % are downloaded. 
+    % Latest downloader use a cached index.html in the local storage to get
+    % the list of files. If the remote server was configured different, it
+    % might not be able to find the list of files. Setting
+    %   DWLD_INDEX_CACHE_UPDATE=1
+    % always update index.html, so it is safe to apply this option. This is
+    % more critical for downloading CDR...
+    crism_obs_info = crism_get_obs_info(obs_id,'SENSOR_ID','L', ...
+        'Download_DDR',2,'Download_EDRSCDF',2, ...
+        'Download_TRRIF',2,'ext_trrif','lbl', ...
+        'Download_TRRRA',2,'ext_trrra','lbl','Download_TRRRAHKP',2,...
+        'DWLD_INDEX_CACHE_UPDATE',true);
+
+    % Download CDR data necessary for calibration and later processing.
+    % fnamesCDR_local gets the filenames of all the relevant CDR files
+    % existing in the local storage (used for deleting once the processing
+    % is done)
+    TRRIFdata = CRISMdata(crism_obs.info.basenameIF,crism_obs.info.dir_trdr);
+    [fnamesCDR_local] = TRRIFdata.load_basenamesCDR('Dwld',2,'INDEX_CACHE_UPDATE',true);
+    
+    %---------------------------------------------------------------------%
+    % Calibration
+    %---------------------------------------------------------------------%
+    % Download=0, no additional downloading is performed. Currently this is
+    % supported with mode=yuki2. yuki3 and yuki4 may need additional data
+    % to be downloaded.
+    [Yif] = crism_calibration_IR_v2(obs_id,'save_memory',true,'mode','yuki2', ...
+        'version','B','skip_ifexist',0,'force',1, 'Dwld',0);
+    
+    %---------------------------------------------------------------------%
+    % Atmospheric correction and denoising.
+    %---------------------------------------------------------------------%
     result = ...
         sabcondv3_pub_water_ice_test(obs_id,3,...'t_mode',t_mode,'lambda_a',lambda_a,...
-            'opt_img',opt_img,'OPTBP',optBP,'nIter',nIter,'Bands_Opt',bands_opt,...
+            'opt_img',opt_img,'img_cube',Yif,'img_cube_band_inverse',0, ...
+            'OPTBP',optBP,'nIter',nIter,'Bands_Opt',bands_opt,...
             'PROC_MODE',proc_mode,'precision',precision);
     fprintf('water_ice_result: %d\n',result.presence_H2Oice);
     fprintf('water_ice_exist: %f\n',mean(result.presence_H2Oice_columns,'omitnan'));
     if result.presence_H2Oice
-        sabcondv3_pub(obs_id,'t_mode',t_mode,'lambda_a',lambda_a,'opt_img',opt_img,...
+        sabcondv3_pub(obs_id,'t_mode',t_mode,'lambda_a',lambda_a, ...
+            'opt_img',opt_img,'img_cube',Yif,'img_cube_band_inverse',0, ...
             'OPTBP',optBP,'nIter',nIter,'Bands_Opt',bands_opt,'SAVE_PDIR',save_pdir,...
             'additional_suffix',additional_suffix,'force',force,'skip_ifexist',skip_ifexist,...
-            'PROC_MODE',proc_mode,'precision',precision,'OPT_ICELIB',3);
+            'PROC_MODE',proc_mode,'precision',precision,'OPT_ICELIB',3,...
+            'STORAGE_SAVING_LEVEL',storage_saving_level);
     else
-       sabcondv3_pub(obs_id,'t_mode',t_mode,'lambda_a',lambda_a,'opt_img',opt_img,...
+       sabcondv3_pub(obs_id,'t_mode',t_mode,'lambda_a',lambda_a, ...
+           'opt_img',opt_img,'img_cube',Yif,'img_cube_band_inverse',0, ...
            'OPTBP',optBP,'nIter',nIter,'Bands_Opt',bands_opt,'SAVE_PDIR',save_pdir,...
            'additional_suffix',additional_suffix,'force',force,'skip_ifexist',skip_ifexist,...
            'PROC_MODE',proc_mode,'precision',precision,...
-           'OPT_CRISMTYPELIB',4,'OPT_SPLIBUSGS',6);
+           'OPT_CRISMTYPELIB',4,'OPT_SPLIBUSGS',6, ...
+           'STORAGE_SAVING_LEVEL',storage_saving_level);
     end
     
-%     sabcondv3_pub(obs_id,'t_mode',2,'lambda_a',0.01,'opt_img','TRRB',...
-%        'OPTBP','pri','nIter',5,'Bands_Opt',bands_opt,'SAVE_PDIR',save_pdir,...
-%        'additional_suffix','woice','force',force,'skip_ifexist',skip_ifexist,...
-%        'PROC_MODE',proc_mode,'precision',precision,...
-%        'OPT_CRISMTYPELIB',4,'OPT_SPLIBUSGS',6);
+    %---------------------------------------------------------------------%
+    % Cleaning. Delete files from the local storage.
+    %---------------------------------------------------------------------%
+    func_delete = @(dirpath,fnamecell) cellfun(@(x) delete(joinPath(dirpath,x)),fnamecell);
+    func_delete(crism_obs_info.dir_trdr,crism_obs_info.fnameTRRwext_local);
+    func_delete(crism_obs_info.dir_edr ,crism_obs_info.fnameEDRwext_local);
+    func_delete(crism_obs_info.dir_ddr ,crism_obs_info.fnameDDRwext_local);
     
+    %% CDR
+    % only CDRs updated daily (stored yyyy_doy folder) are removed.
+    cdr_acros = fieldnames(fnamesCDR_local);
+    for ii=1:length(cdr_acros)
+        acro = cdr_acros{ii};
+        fldtype = crism_assessCDRForderType(acro);
+        switch fldtype
+            case 1
+                if iscell(TRRIFdata.dir_cdr.(acro))
+                    for iii=1:length(fnamesCDR_local.(acro))
+                        dirpath_cdr = TRRIFdata.dir_cdr.(acro){iii};
+                        fnames_cdr  = fnamesCDR_local.(acro){iii};
+                        func_delete(dirpath_cdr,fnames_cdr);
+                    end
+                elseif ischar(TRRIFdata.dir_cdr.(acro))
+                    
+        end
+    end
     
 end
 
