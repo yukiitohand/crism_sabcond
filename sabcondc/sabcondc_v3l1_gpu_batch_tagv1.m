@@ -839,8 +839,8 @@ end
 logYif_cor(logYif_isnan) = nan;
 
 if batch
-    [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc]...
-        = gather(logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,badspc);
+    [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,Xtc,badspc]...
+        = gather(logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,X,Xtc,badspc);
 else
 end
 
