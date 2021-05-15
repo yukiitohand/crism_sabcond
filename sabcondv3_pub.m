@@ -427,7 +427,7 @@ if TRRIF_is_empty
     TRRIFdata = TRRRAdata;
 end
 
-[DFdata1,DFdata2] = get_DFdata4SC(TRRIFdata,crism_obs);
+[DFdata1,DFdata2] = crism_get_DFdata4SC(TRRIFdata,crism_obs);
 
 %%
 %-------------------------------------------------------------------------%
