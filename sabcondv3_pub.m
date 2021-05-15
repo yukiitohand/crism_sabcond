@@ -279,6 +279,7 @@ global crism_env_vars
 
 % ## I/O OPTIONS #---------------------------------------------------------
 save_file          = true;
+storage_saving_level = 'NORMAL';
 save_pdir          = './resu/';
 save_dir_yyyy_doy  = false;
 force              = false;
@@ -288,7 +289,6 @@ interleave_out     = 'lsb';
 interleave_default = 'lsb';
 subset_columns_out = false;
 Alib_out           = false;
-storage_saving_level = 'NORMAL';
 do_crop_bands      = false;
 
 % ## INPUT IMAGE OPTIONS #-------------------------------------------------
