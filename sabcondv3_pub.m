@@ -121,7 +121,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       by default. Set to true if you set STORAGE_SAVING_LEVEL=Highest
 %       (default) false
 %
-%  ## GENERAL SABCOND OPTIONS #--------------------------------------------
+%  ## INPUT IMAGE OPTIONS #------------------------------------------------
 %   'OPT_IMG': string, {'IF','RA_IF','TRRY','TRRB','TRRC'}
 %       type of input image to be used
 %       (default) 'TRRB'
@@ -141,6 +141,8 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       Observation counter of the image to be processed. Used only for 
 %       processing FFC images. 
 %       (default) 1
+%
+%  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'BANDS_OPT' : integer, {4}
 %       an option for wavelength channels to use. This is the 
 %       input for genBands()
@@ -268,12 +270,14 @@ Alib_out           = false;
 storage_saving_level = 'NORMAL';
 do_crop_bands      = false;
 
-% ## GENERAL SABCOND OPTIONS #---------------------------------------------
+%  ## INPUT IMAGE OPTIONS #------------------------------------------------
 opt_img      = 'TRRB';
 img_cube     = [];
 img_cube_band_inverse = [];
 dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
 ffc_counter  = 1;
+
+% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 bands_opt    = 4;
 line_idxes   = [];                     % LINES
 column_idxes = [];
@@ -346,7 +350,7 @@ else
             case 'CROP_BANDS'
                 do_crop_bands = varargin{i+1};
                 
-            % ## GENERAL SABCOND OPTIONS #---------------------------------
+            %  ## INPUT IMAGE OPTIONS #------------------------------------
             case 'OPT_IMG'
                 opt_img = varargin{i+1};
             case 'IMG_CUBE'
@@ -357,6 +361,8 @@ else
                 dir_yuk = varargin{i+1};
             case 'FFC_IF_COUNTER'
                 ffc_counter = varargin{i+1};
+                
+            % ## GENERAL SABCOND OPTIONS #---------------------------------
             case 'BANDS_OPT'
                 bands_opt = varargin{i+1};
             case {'LINES','LLS'}
@@ -1183,12 +1189,14 @@ fprintf(fid,'SUBSET_COLUMNS_OUT: %d\n', subset_columns_out);
 fprintf(fid,'ALIB_OUT: %d\n',Alib_out);
 fprintf(fid,'CROP_BANDS: %d\n',do_crop_bands);
 
-% ## GENERAL SABCOND OPTIONS #---------------------------------------------
+%  ## INPUT IMAGE OPTIONS #------------------------------------------------
 fprintf(fid,'OPT_IMG: %s\n',opt_img);
 fprintf(fid,'IMG_CUBE is empty: %s',img_cube_isempty);
 fprintf(fid,'IMG_CUBE_BAND_INVERSE: %d',img_cube_band_inverse);
 fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
 fprintf(fid,'FFC_IF_COUNTER: %d\n',ffc_counter);
+
+% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 fprintf(fid,'BANDS_OPT: %d\n',bands_opt);
 fprintf(fid,'LINES:'); fprintf(fid,' %d',line_idxes); fprintf(fid, '\n');
 fprintf(fid,'COLUMNS:'); fprintf(fid,' %d',column_idxes); fprintf(fid, '\n');
@@ -1260,12 +1268,13 @@ settings.interleave_out = interleave_out;
 settings.subset_columns_out = subset_columns_out;
 settings.Alib_out = Alib_out;
 settings.crop_bands = do_crop_bands;
-% ## GENERAL SABCOND OPTIONS #---------------------------------------------
+%  ## INPUT IMAGE OPTIONS #------------------------------------------------
 settings.opt_img = opt_img;
 settings.img_cube_isempty = img_cube_isempty;
 settings.img_cube_band_inverse = img_cube_band_inverse;
 settings.trry_pdir = dir_yuk;
 settings.ffc_if_counter = ffc_counter;
+% ## GENERAL SABCOND OPTIONS #---------------------------------------------
 settings.bands_opt = bands_opt;
 settings.lines = line_idxes;
 settings.columns = column_idxes;
