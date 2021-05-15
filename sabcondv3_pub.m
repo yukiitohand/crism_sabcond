@@ -70,7 +70,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       whether or not to save processed images. If true, two optioal 
 %       parameters 'FORCE','SKIP_IFEXIST' have no effect.
 %       (default) true
-%   'STORAGE_SAVING_LEVEL: string, number
+%   'STORAGE_SAVING_LEVEL': string, number
 %       determine how much to save storage, no effect uder save_file=1
 %       Normal  - All the byproducts are saved
 %       Highest - Only nr_ds and mdl_ds are saved, bands are also scropped.
@@ -116,7 +116,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       whether or not to out to include the libraries used for the
 %       processing.
 %       (default) false
-%   'CROP_BANDS;: Boolean
+%   'CROP_BANDS': Boolean
 %       whether or not to crop unprocessed bands that are filled with NaN
 %       by default. Set to true if you set STORAGE_SAVING_LEVEL=Highest
 %       (default) false
@@ -180,9 +180,9 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       (default) false
 %
 %  ## PRE-PROCESSING OPTIONS #---------------------------------------------
-%   'CAL_BIAS_COR': Boolean, 
+%   'CAL_BIAS_COR': integer {0,1}
 %       whether or not to perform image based bias correction.
-%       (default) true
+%       (default) 0
 %
 %  ## TRANSMISSION SPECTRUM OPTIONS #--------------------------------------
 %    'T_MODE': integer {1,2,3,4,5}
@@ -287,7 +287,7 @@ th_badspc    = 0.8;
 ffc_mode     = false;
 
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
-cal_bias_cor = 1;
+cal_bias_cor = 0;
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 t_mode = 2;
@@ -517,9 +517,6 @@ switch upper(opt_img)
     case {'TRRY','TRRB','TRRC','TRRD'}
         trr_vr = opt_img(4);
         basenameTRRY = crism_get_TRRXbasename(TRRIFdata,trr_vr);
-        % prop = getProp_basenameOBSERVATION(TRRIFdata.basename);
-        % prop.version = trr_vr;
-        % basenameTRRY = get_basenameOBS_fromProp(prop);
         basename_cr = [basenameTRRY suffix];
     otherwise
         error('opt_img = %s is not defined',opt_img);
@@ -590,6 +587,7 @@ if isempty(img_cube)
         otherwise
             error('opt_img = %s is not defined',opt_img);
     end
+    img_cube_isempty = true;
 else
     % You will perform log conversion, so cast them to double precision.
     Yif = double(img_cube);
@@ -606,6 +604,7 @@ else
             Yif = flip(Yif,3);
         end
     end
+    img_cube_isempty = false;
     clear img_cube;
 end
 
@@ -657,17 +656,19 @@ else
 end
 switch lower(optBP)
     case 'pri'
-        [BP1nan] = crism_formatBPpri1nan(BPdata1,BPdata2,'band_inverse',true);
-        [GP1nan] = crism_convertBP1nan2GP1nan(BP1nan);
-        GP1nan = permute(GP1nan(bands,:,:),[1,3,2]);
-        BP1nan = permute(BP1nan(bands,:,:),[1,3,2]);
+        [BP1nanfull] = crism_formatBPpri1nan(BPdata1,BPdata2, ...
+                            'band_inverse',true,'interleave','lsb');
+        [GP1nanfull] = crism_convertBP1nan2GP1nan(BP1nanfull);
+        GP1nan = permute(GP1nanfull(:,:,bands),[3,1,2]);
+        BP1nan = permute(BP1nanfull(:,:,bands),[3,1,2]);
     case 'all'
-        [BP1nan] = crism_formatBP1nan(BPdata_post,'band_inverse',true);
-        [GP1nan] = crism_convertBP1nan2GP1nan(BP1nan);
-        GP1nan = permute(GP1nan(bands,:,:),[1,3,2]);
-        BP1nan = permute(BP1nan(bands,:,:),[1,3,2]);
+        [BP1nanfull] = crism_formatBP1nan(BPdata_post, ...
+                            'band_inverse',true,'interleave','lsb');
+        [GP1nanfull] = crism_convertBP1nan2GP1nan(BP1nanfull);
+        GP1nan = permute(GP1nanfull(:,:,bands),[3,1,2]);
+        BP1nan = permute(BP1nanfull(:,:,bands),[3,1,2]);
     case 'none'
-        GP1nan = double(true(nB,1,nCall));
+        GP1nan = one(nB,1,nCall);
         BP1nan = nan(nB,1,nCall);
     otherwise 
         error('optBP=%s is not defined.',optBP);
@@ -1133,8 +1134,19 @@ switch upper(PROC_MODE)
         
 end
 
-BP = permute(BP,[2,3,1]);
-GP = permute(GP,[2,3,1]);
+
+switch lower(optBP)
+    case {'pri','all'}
+        BP = (BP1nanfull==1);
+        GP = (GP1nanfull==1);
+    case 'none'
+        BP = permute(BP,[2,3,1]);
+        GP = permute(GP,[2,3,1]);
+    otherwise 
+        error('optBP=%s is not defined.',optBP);
+end
+
+
 
 tend = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
 fprintf('finish procceing, current time is %s.\n',tend);
@@ -1144,9 +1156,7 @@ fprintf('Processing time is %s\n',tend-tstart);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % save results
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-%% Write a setting file.
+% Write a setting file.
 fname = [basename_cr '_settings.txt'];
 if save_file
     fprintf('Now saving...\n');
@@ -1162,6 +1172,7 @@ fprintf(fid,'Time finished: %s\n',dt);
 
 % ## I/O OPTIONS #---------------------------------------------------------
 fprintf(fid,'SAVE_FILE: %d\n',save_file);
+fprintf(fid,'STORAGE_SAVING_LEVEL %s\n',storage_saving_level);
 fprintf(fid,'SAVE_PDIR: %s\n',save_pdir);
 fprintf(fid,'SAVE_DIR_YYYY_DOY: %d\n',save_dir_yyyy_doy);
 fprintf(fid,'FORCE: %d\n',force);
@@ -1170,9 +1181,12 @@ fprintf(fid,'ADDITIONAL_SUFFIX: %s\n',additional_suffix);
 fprintf(fid,'INTERLEAVE_OUT: %s\n',interleave_out);
 fprintf(fid,'SUBSET_COLUMNS_OUT: %d\n', subset_columns_out);
 fprintf(fid,'ALIB_OUT: %d\n',Alib_out);
+fprintf(fid,'CROP_BANDS: %d\n',do_crop_bands);
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 fprintf(fid,'OPT_IMG: %s\n',opt_img);
+fprintf(fid,'IMG_CUBE is empty: %s',img_cube_isempty);
+fprintf(fid,'IMG_CUBE_BAND_INVERSE: %d',img_cube_band_inverse);
 fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
 fprintf(fid,'FFC_IF_COUNTER: %d\n',ffc_counter);
 fprintf(fid,'BANDS_OPT: %d\n',bands_opt);
@@ -1236,6 +1250,7 @@ settings.username = username;
 settings.dt = dt;
 % ## I/O OPTIONS #---------------------------------------------------------
 settings.save_file = save_file;
+settings.storage_saving_level = storage_saving_level;
 settings.save_pdir = save_pdir;
 settings.save_dir_yyyy_doy = save_dir_yyyy_doy;
 settings.force = force;
@@ -1244,8 +1259,11 @@ settings.additional_suffix = additional_suffix;
 settings.interleave_out = interleave_out;
 settings.subset_columns_out = subset_columns_out;
 settings.Alib_out = Alib_out;
+settings.crop_bands = do_crop_bands;
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 settings.opt_img = opt_img;
+settings.img_cube_isempty = img_cube_isempty;
+settings.img_cube_band_inverse = img_cube_band_inverse;
 settings.trry_pdir = dir_yuk;
 settings.ffc_if_counter = ffc_counter;
 settings.bands_opt = bands_opt;
@@ -1296,6 +1314,10 @@ for bi=1:nBall
     Yif_cor_nr(:,:,bi) = Yif_cor_nr(:,:,bi) .* Valid_pixels_good;
 end
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Create header files
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% hdr, mimics CAT file production
 % first construct ENVI header files
 hdr_cr = crism_const_cathdr(TRRIFdata,true,'DATE_TIME',dt);
 hdr_cr.cat_history = suffix;
@@ -1322,12 +1344,14 @@ end
 % Only performed for continuous data over the bands.
 fprintf('Performing de-smiling ...\n');
 wa = WAdata.img;
-[Yif_nr_ds] = crism_smile_correction(Yif_cor_nr,wa,hdr_cr.wavelength(:),bands);
-[Yifmdl_ds] = crism_smile_correction(Yif_mdl,wa,hdr_cr.wavelength(:),bands);
-[AB_est_ds] = crism_smile_correction(AB_est,wa,hdr_cr.wavelength(:),bands);
-[Bg_est_ds] = crism_smile_correction(Bg_est,wa,hdr_cr.wavelength(:),bands);
+[Yif_nr_ds] = crism_smile_correction(Yif_cor_nr,wa,hdr_cr.wavelength(:)*1000,bands);
+[Yifmdl_ds] = crism_smile_correction(Yif_mdl   ,wa,hdr_cr.wavelength(:)*1000,bands);
+[AB_est_ds] = crism_smile_correction(AB_est    ,wa,hdr_cr.wavelength(:)*1000,bands);
+[Bg_est_ds] = crism_smile_correction(Bg_est    ,wa,hdr_cr.wavelength(:)*1000,bands);
 
-%% Crop bands
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Crop bands
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if do_crop_bands
     Yif_cor     = Yif_cor(:,:,bands);
     Yif_cor_ori = Yif_cor_ori(:,:,bands);
@@ -1342,13 +1366,15 @@ if do_crop_bands
     AB_est_ds   = AB_est_ds(:,:,bands);
     Bg_est_ds   = Bg_est_ds(:,:,bands);
     hdr_cr.wavlength = hdr_cr.wavlength(bands);
-    hdr_cr.fwhm  = hdr_cr.fwhm;
-    hdr_cr.bbl   = hdr_cr.bbl;
+    hdr_cr.fwhm  = hdr_cr.fwhm(bands);
+    hdr_cr.bbl   = hdr_cr.bbl(bands);
     hdr_cr.bands = length(bands);
+    wa = wa(:,:,bands);
+    BP = BP(:,:,bands);
+    GP = GP(:,:,bands);
 end
 
 %% SAVING OPERATIONS
-% hdr, mimics CAT file production
 if save_file
     switch upper(storage_saving_level)
         case 'NORMAL'
@@ -1368,7 +1394,6 @@ if save_file
             fprintf('Done\n');
 
             fname_supple = joinPath(save_dir,[basename_cr '.mat']);
-            wa = WAdata.img;
             wa = squeeze(wa)';
             fprintf('Saving %s ...\n',fname_supple);
 
@@ -1412,6 +1437,7 @@ if save_file
                 fprintf('Done\n');
             end
             
+            % Nan Replaced data (nr)
             basename_cr_nr = [basename_cr '_nr'];
             hdr_cr_nr = hdr_cr;
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
@@ -1453,6 +1479,8 @@ if save_file
             fprintf('Done\n');
             
         case 'HIGHEST'
+            % With STORAGE_SAVING_LEVEL=HIGHEST, only desmiled nan replaced
+            % image and models are saved.
             basename_nr_ds = [basename_cr '_nr_ds'];
             hdr_nr_ds = hdr_cr;
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
@@ -1519,15 +1547,19 @@ elseif nargout==1
     out.obs_id = obs_id;
     out.TRR3IF = TRRIFdata.basename;
     
-    WA = squeeze(WAdata.img(:,:,:))';
+    WA = squeeze(wa)';
     % take the subset of the columns
     if subset_columns_out
         Yif_cor     = Yif_cor(:,column_idxes,:);
         Yif_cor_nr  = Yif_cor_nr(:,column_idxes,:);
         Yif_cor_ori = Yif_cor_ori(:,column_idxes,:);
+        Yif_nr_ds   = Yif_nr_ds(:,column_idxes,:);
         Yif_isnan   = Yif_isnan(:,column_idxes,:);
         AB_est      = AB_est(:,column_idxes,:);
         Bg_est      = Bg_est(:,column_idxes,:);
+        AB_est_ds   = AB_est_ds(:,column_idxes,:);
+        Bg_est_ds   = Bg_est_ds(:,column_idxes,:);
+        Yifmdl_ds   = Yifmdl_ds(:,column_idxes,:);
         WA          = WA(:,column_idxes);
         switch upper(PROC_MODE)
             case {'CPU_3','GPU_3','GPU_BATCH_3'}
@@ -1553,9 +1585,13 @@ elseif nargout==1
     Yif_cor     = permute(Yif_cor,    prmt_ordr);
     Yif_cor_nr  = permute(Yif_cor_nr, prmt_ordr);
     Yif_cor_ori = permute(Yif_cor_ori,prmt_ordr);
+    Yif_nr_ds   = permute(Yif_nr_ds  ,prmt_ordr);
     Yif_isnan   = permute(Yif_isnan,  prmt_ordr);
     AB_est      = permute(AB_est,     prmt_ordr);
     Bg_est      = permute(Bg_est,     prmt_ordr);
+    AB_est_ds   = permute(AB_est_ds,  prmt_ordr);
+    Bg_est_ds   = permute(Bg_est_ds,  prmt_ordr);
+    Yifmdl_ds   = permute(Yifmdl_ds,  prmt_ordr);
     Valid_pixels= permute(Valid_pixels,prmt_ordr);
     GP = permute(GP,prmt_ordr);
     BP = permute(BP,prmt_ordr);
@@ -1567,8 +1603,12 @@ elseif nargout==1
     out.Yif_cor     = Yif_cor;
     out.Yif_cor_nr  = Yif_cor_nr;
     out.Yif_cor_ori = Yif_cor_ori;
+    out.Yif_nr_ds   = Yif_nr_ds;
     out.AB_est      = AB_est;
     out.Bg_est      = Bg_est;
+    out.AB_est_ds   = AB_est_ds;
+    out.Bg_est_ds   = Bg_est_ds;
+    out.Yifmdl_ds   = Yifmdl_ds;
     if ~isempty(opticelib)
         out.Ice_est = Ice_est;
     end
@@ -1585,6 +1625,7 @@ elseif nargout==1
     out.Yif_isnan    = Yif_isnan;
     out.Valid_pixels = Valid_pixels;
     out.WA           = WA;
+    out.WV           = hdr_cr.wavelength;
     out.lines        = line_idxes;
     out.columns      = column_idxes;
     out.bands        = bands;
