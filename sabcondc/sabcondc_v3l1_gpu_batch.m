@@ -969,21 +969,52 @@ for n=2:nIter
             badspc = (sum(logYif_isnan,1)/B) > th_badspc;
             logYif_isnan = or(logYif_isnan,badspc);
             
-            lambda_r = 1./mad_expected.*(Ymdl)./(B*20);
+            % lambda_r = 1./(mad_expected+bands_bias_mad).*(Ymdl)./(B*20);
+            lambda_r = 1./(mad_expected).*(Ymdl)./(B*20);
             % do we need to set lambda_r to zero?? not sure.
             lambda_r(logYif_isnan) = 0;
     end
+    
+    if is_debug
+        ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+        ybad_1nan = convertBoolTo1nan(logYif_isnan);
+        logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+        logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
-    lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
-    lambda_c([1,Nc],:,:) = 0; % safeguard
+        for li=liList
+            hold(ax_spc,'on');
+            plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(6,:),...
+                'DisplayName',sprintf('cor good iter=%d  before t upd',n));
+            plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(6,:),...
+                'DisplayName',sprintf('cor bad iter=%d  before t upd',n));
+            
+            
+            RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+            hold(ax_res,'off');
+            plot(ax_res,RR);
+            hold(ax_res,'on');
+            plot(ax_res,RR_bad_1nan,'x'); 
+        end
+        drawnow;
+    end
+
     
-    
-    resNrm = nansum(abs(lambda_r .* RR),[1,2]);
+    switch upper(lambda_update_rule)
+        case 'L1SUM'
+            resNrm = nansum(abs(RR.* lambda_r),[1,2]);
+        case 'MED'
+            logYif_nisnan_1nan = convertBoolTo1nan(~logYif_isnan);
+            resNrm = nanmedian(abs(lambda_r.*RR .* logYif_nisnan_1nan),[1,2]);
+        case 'NONE'
+            resNrm = 1;
+        otherwise
+            error('Undefined LAMBDA_UPDATE_RULE: %s',lambda_update_rule);
+    end
     
     % update logt_est
     if ffc_mode
-        RR = RR + logT;
-        Xtc = ones(1,L,S,precision,gpu_varargin);
+        RR = RR + logt_est;
+        Xtc = ones(1,L,S,precision,gpu_varargin{:});
     else
         if batch
             RR  = RR + pagefun(@mtimes,A(:,idxAlogT,:),X(idxAlogT,:,:));
