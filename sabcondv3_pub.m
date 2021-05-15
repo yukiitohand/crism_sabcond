@@ -70,11 +70,11 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       whether or not to save processed images. If true, two optioal 
 %       parameters 'FORCE','SKIP_IFEXIST' have no effect.
 %       (default) true
-%   'STORAGE_SAVING_LEVEL': string, number
-%       determine how much to save storage, no effect uder save_file=1
+%   'STORAGE_SAVING_LEVEL': string
+%       determine how much to save storage, no effect under save_file=1
 %       Normal  - All the byproducts are saved
 %       Highest - Only nr_ds and mdl_ds are saved, bands are also scropped.
-%       (default) Highest
+%       (default) Normal
 %   'SAVE_PDIR': any string
 %       root directory path where the processed data are stored. The
 %       processed image will be saved at <SAVE_PDIR>/CCCNNNNNNNN, where CCC
