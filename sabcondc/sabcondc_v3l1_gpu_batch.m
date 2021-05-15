@@ -370,9 +370,6 @@ switch weight_mode
     case 0
         lambda_r = ones(B,L,S,precision,gpu_varargin{:});
         lambda_r(logYif_isnan_ori) = 0;
-        lambda_c = zeros(B,L,S,precision,gpu_varargin{:});
-        lambda_c(logYif_isnan) = inf;
-        lambda_c([1,Nc],:,:) = 0; % safeguard
     case 1
         % compute weight
         mYif = nanmean(Yif,2);
@@ -392,12 +389,6 @@ switch weight_mode
         lambda_r = lambda_r .* exp(logT);
         lambda_r(logYif_isnan_ori) = 0;
         bp_bool_ori = all(logYif_isnan_ori,2);
-        
-        % lambda_c_ori = bands_bias_mad./Ymdl;
-        lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad)./(Ymdl);
-        lambda_c = lambda_c_ori;
-        lambda_c(logYif_isnan) = inf;
-        lambda_c([1,Nc],:,:) = 0; % safeguard
 end
 
 if ffc_mode
@@ -406,6 +397,13 @@ else
 end
 lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
 lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
+
+% 
+% lambda_c_ori = bands_bias_mad./Ymdl;
+lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad)./(Ymdl);
+lambda_c = lambda_c_ori;
+lambda_c(logYif_isnan) = inf;
+lambda_c([1,Nc],:,:) = 0; % safeguard
 
 
 c2_z = zeros([Nc,1],precision);
