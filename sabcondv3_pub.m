@@ -44,6 +44,8 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 % OUTPUT Parameters
 %   out: struct, 
 %       storing processed images and byproducts. 
+%           out.obs_id      = obs_id;
+%           out.TRR3IF      = TRRIFdata.basename;
 %           out.Yif_cor     = Yif_cor;
 %           out.Yif_cor_nr  = Yif_cor_nr;
 %           out.Yif_cor_ori = Yif_cor_ori;
@@ -173,6 +175,14 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       threshold value for which the spectra is considered to be
 %       completely corrupted
 %       (default) 0.8
+%   'FFC_MODE': boolean
+%       whether or not to perform FFC correcion
+%       (default) false
+%
+%  ## PRE-PROCESSING OPTIONS #---------------------------------------------
+%   'CAL_BIAS_COR': Boolean, 
+%       whether or not to perform image based bias correction.
+%       (default) true
 %
 %  ## TRANSMISSION SPECTRUM OPTIONS #--------------------------------------
 %    'T_MODE': integer {1,2,3,4,5}
@@ -222,7 +232,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'PRECISION': string, {'single','double'}
 %       percision with which processing is performed.
 %       (default) 'double'
-%   'PROC_MODE': string, {'CPU_1','GPU_1','CPU_2','GPU_2','GPU_BATCH_2'}
+%   'PROC_MODE': string, {'CPU_1','GPU_1','CPU_2','GPU_2','GPU_BATCH_2','CPU_3','GPU_3','GPU_BATCH_3'}
 %       option for which processor is used CPU or GPU, and which algorithm
 %       is used, formatted as PPP[_BATCH]_A, where PPP represents 
 %       processor, and A is the index for algorithm. BATCH indicates 
@@ -232,11 +242,15 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %              model values.
 %           2: Bad pixel detected during processing are exactly ignored
 %              during the processing.
-%       Currently, multiple GPU processing is not supported.
+%           3: ONLY multiplicative bias constant is learned instead of
+%              transmission spectrum
 %   'BATCH_SIZE': integer
 %       column size for which processing is performed. Valid only if
 %       'GPU_BATCH_*' mode is selected.
 %       (default) 10
+%   'DEBUG': boolean
+%        going into debug mode
+%        (default) false
 
 global crism_env_vars
 
@@ -270,6 +284,10 @@ column_skip  = 1;
 weight_mode  = 0;
 lambda_update_rule = 'L1SUM';
 th_badspc    = 0.8;
+ffc_mode     = false;
+
+% ## PRE-PROCESSING OPTIONS #----------------------------------------------
+cal_bias_cor = 1;
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 t_mode = 2;
@@ -293,6 +311,7 @@ lambda_a = 0.01;
 precision  = 'double';
 PROC_MODE  = 'CPU_1';
 batch_size = 10;
+is_debug   = false;
 
 % ## ETCETERA #------------------------------------------------------------
 % gausssigma = 0.6;
@@ -358,6 +377,12 @@ else
                 lambda_update_rule = varargin{i+1};
             case 'THRESHOLD_BADSPC'
                 th_badspc = varargin{i+1};
+            case 'FFC_MODE'
+                ffc_mode = varargin{i+1};
+                
+            % % ## PRE-PROCESSING OPTIONS #--------------------------------
+            case 'CAL_BIAS_COR'
+                cal_bias_cor = varargin{i+1};
                 
             % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------
             case 'T_MODE'
@@ -396,6 +421,8 @@ else
                 PROC_MODE = varargin{i+1};
             case 'BATCH_SIZE'
                 batch_size = varargin{i+1};
+            case 'DEBUG'
+                is_debug = varargin{i+1};
                 
             otherwise
                 error('Unrecognized option: %s',varargin{i});
@@ -424,9 +451,9 @@ optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 % libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
 
 switch upper(PROC_MODE)
-    case {'CPU_1','CPU_2'}
+    case {'CPU_1','CPU_2','CPU_3','CPU_4'}
         gpu = false;
-    case {'GPU_1','GPU_2','GPU_BATCH_2'}
+    case {'GPU_1','GPU_2','GPU_BATCH_2','GPU_3','GPU_BATCH_3','GPU_4','GPU_BATCH_4'}
         gpu = true;
     otherwise
         error('Undefined PROC_MODE=%s',PROC_MODE);
@@ -443,9 +470,9 @@ end
 
 % determine batch size for each PROC_MODE----------------------------------
 switch upper(PROC_MODE)
-    case {'CPU_1','CPU_2','GPU_2'}
+    case {'CPU_1','CPU_2','GPU_2','CPU_3','GPU_3','CPU_4','GPU_4'}
         batch_size = 1;
-    case {'GPU_BATCH_2'}
+    case {'GPU_BATCH_2','GPU_BATCH_3','GPU_BATCH_4'}
         
     otherwise
         error('Undefined PROC_MODE=%s',PROC_MODE);
@@ -484,7 +511,7 @@ fprintf('suffix will be \n"%s"\n',suffix);
 
 switch upper(opt_img)
     case 'IF'
-        basename_cr = [crism_obs.info.basenameIF suffix];
+        basename_cr = [TRRIFdata.basenameIF suffix];
     case 'RA_IF'
         basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
     case {'TRRY','TRRB','TRRC','TRRD'}
@@ -543,6 +570,7 @@ bBool = false(nBall,1); bBool(bands) = true;
 basenameWA = WAdata.basename;
 WAb = squeeze(WAdata.img(:,:,bands))';
 
+<<<<<<< HEAD
 if isempty(img_cube)
 
     switch upper(opt_img)
@@ -583,12 +611,42 @@ else
     clear img_cube;
 end
 
-Yif = Yif(line_idxes,:,bands);
+
+TRRIFdata.readCDR('DM');
+DMmask = TRRIFdata.cdr.DM.readimgi();
+fprintf('finish loading Image\n');
+
+%% Compute calibration biases
+% put nan for invalid values and extract lines focused.
 Yif(Yif<=1e-8) = nan;
+Yif = Yif(line_idxes,:,:);
+
+% estimate potential biases
+bands4bias = 1:252;
+if cal_bias_cor
+    mat_name = [TRRYIFdata.basename sprintf('_BPpost3%dt%d.mat',bands4bias(1),bands4bias(end))];
+    if exist(mat_name,'file')
+        load(mat_name,'dev_coef','band_bias_std','bands4bias');
+    else
+        [BPpost_plus,band_bias_std,dev_sub,val_ratio_3d2,val_ratio_3d2_smth2] = detect_BPpost_wBias3(...
+            Yif(:,:,:), DMmask,'bands',bands4bias,'debug',is_debug);
+
+        [dev_coef,img_nanmed_estimate,dev_coef_ori] = calc_deviation_BPpost2(...
+            BPpost_plus(1,:,bands4bias),Yif(:,:,bands4bias));
+        save(mat_name,'dev_coef','band_bias_std','dev_sub','img_nanmed_estimate','dev_coef_ori','bands4bias','BPpost_plus','val_ratio_3d2','val_ratio_3d2_smth2');
+    end
+    % bands_bias_mad is for later processing.
+    bands_bias_mad = permute(band_bias_std(:,:,bands),[3,1,2]) .* norminv(0.75);
+else
+    dev_coef = ones(1,size(Yif,2),length(bands4bias));
+    bands_bias_mad = zeros(length(bands),1);
+end
+
+% apply biases for severely corrupted ones.
+Yif = Yif(:,:,bands4bias)./dev_coef;
+Yif = Yif(:,:,bands);
 logYif = log(Yif);
 logYif = permute(logYif,[3,1,2]);
-
-fprintf('finish loading Image\n');
 
 %%
 % read bad pixel
@@ -694,7 +752,6 @@ switch weight_mode
     otherwise
         error('Undefined weight mode: %d',weight_mode);
 end
-    
 
 %% read ADR transmission data
 switch t_mode
@@ -706,7 +763,7 @@ switch t_mode
         [ at_trans ] = load_T_sclk_closest(sclk_img,varargin_T{:});
         at_trans = crism_bin_image_frames(at_trans,'binning',WAdata.prop.binning);
     case {5}
-        [ at_trans ] = load_T_given( obs_id_T,varargin_T{:});
+        [ at_trans ] = load_T_given_v2( obs_id_T,varargin_T{:});
         at_trans = crism_bin_image_frames(at_trans,'binning',WAdata.prop.binning);
     otherwise
         error('Undefined t_mode %d',t_mode);
@@ -854,23 +911,34 @@ switch upper(PROC_MODE)
             Ice_est = exp(Ice_est);
         end
     
-    case {'CPU_2','GPU_2','GPU_BATCH_2'}
+    case {'CPU_2','GPU_2','GPU_BATCH_2','CPU_3','GPU_3','GPU_BATCH_3','CPU_4','GPU_4','GPU_BATCH_4'}
         %%
         Yif_cor = nan([nBall,nLall,nCall],precision);
         Yif_isnan = nan([nBall,nLall,nCall]);
-        T_est = nan([nBall,1,nCall],precision);
+        switch upper(PROC_MODE)
+            case {'CPU_2','GPU_2','GPU_BATCH_2'}
+                T_est = nan([nBall,1,nCall],precision);
+            case {'CPU_3','GPU_3','GPU_BATCH_3'}
+                mc = nan([nBall,1,nCall],precision);
+            case {'CPU_4','GPU_4','GPU_BATCH_4'}
+                T_est = nan([nBall,1,nCall],precision);
+                mc = nan([nBall,1,nCall],precision);
+        end
         Bg_est = nan([nBall,nLall,nCall],precision);
         AB_est = nan([nBall,nLall,nCall],precision);
         badspcs = true([1,nLall,nCall]);
+        bp_est_bools = false([nBall,1,nCall]);
         Ice_est = nan([nBall,nLall,nCall],precision);
         Yif_cor_ori = nan([nBall,nLall,nCall],precision);
         ancillaries = struct('Xt',cell(nCall,1),'Xlib',cell(nCall,1),...
                              'Xice',cell(nCall,1),...
                              'Alib',cell(nCall,1),'Aicelib',cell(nCall,1),...
-                             'infoAlib',cell(nCall,1),'infoAicelib',cell(nCall,1));
+                             'infoAlib',cell(nCall,1),'infoAicelib',cell(nCall,1),...
+                             'AlogT',cell(nCall,1));
         n_batch = ceil(length(Columns_valid)/batch_size);
         
         for ni = 1:n_batch
+            tic;
             if ni~=n_batch
                 Columns = Columns_valid((1+batch_size*(ni-1)):(batch_size*ni));
             elseif ni==n_batch
@@ -915,7 +983,7 @@ switch upper(PROC_MODE)
             if strcmpi(precision,'single')
                 Alibs = single(Alibs); Aicelibs = single(Aicelibs);
             end
-            tic;
+            
             switch weight_mode
                 case 0
                     [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
@@ -928,22 +996,61 @@ switch upper(PROC_MODE)
                               'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
                               'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
                               'gpu',gpu,'WEIGHT_MODE',weight_mode,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
-                              'THRESHOLD_BADSPC',th_badspc);
+                              'THRESHOLD_BADSPC',th_badspc,'DEBUG',is_debug);
                 case 1
-                    [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
-                        AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
-                        Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns)]...
-                    = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
-                              logT_extrap(:,:,Columns),...
-                              BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
-                              'Aicelib',Aicelibs,'nIter',nIter,...
-                              'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
-                              'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
-                              'gpu',gpu,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
-                              'THRESHOLD_BADSPC',th_badspc,...
-                              'WEIGHT_MODE',weight_mode,...
-                              'STDL1_IFDF',stdl1_ifdf(:,:,Columns),'SFIMG',SFimg(:,:,Columns),...
-                              'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl);
+                    switch upper(PROC_MODE)
+                         case {'CPU_4','GPU_4','GPU_BATCH_4'}
+                             [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),mc(bBool,1,Columns),...
+                                AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
+                                Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns)]...
+                            = sabcondc_v3l1_gpu_batch_mc2(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
+                                      logT_extrap(:,:,Columns),...
+                                      BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
+                                      'Aicelib',Aicelibs,'nIter',nIter,...
+                                      'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                                      'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                                      'gpu',gpu,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
+                                      'THRESHOLD_BADSPC',th_badspc,...
+                                      'WEIGHT_MODE',weight_mode,...
+                                      'STDL1_IFDF',stdl1_ifdf(:,:,Columns),'SFIMG',SFimg(:,:,Columns),...
+                                      'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl,'FFC_MODE',ffc_mode,...
+                                      'DEBUG',is_debug,...
+                                      'Bands_Bias_MAD',bands_bias_mad);
+                        case {'CPU_3','GPU_3','GPU_BATCH_3'}
+                             [Yif_cor(bBool,lBool,Columns),mc(bBool,1,Columns),...
+                                AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
+                                Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns),bp_est_bools(bBool,1,Columns)]...
+                            = sabcondc_v3l1_gpu_batch_mc(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
+                                      logT_extrap(:,:,Columns),...
+                                      BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
+                                      'Aicelib',Aicelibs,'nIter',nIter,...
+                                      'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                                      'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                                      'gpu',gpu,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
+                                      'THRESHOLD_BADSPC',th_badspc,...
+                                      'WEIGHT_MODE',weight_mode,...
+                                      'STDL1_IFDF',stdl1_ifdf(:,:,Columns),'SFIMG',SFimg(:,:,Columns),...
+                                      'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl,'FFC_MODE',ffc_mode,...
+                                      'DEBUG',is_debug,...
+                                      'Bands_Bias_MAD',bands_bias_mad);
+                        case {'CPU_2','GPU_2','GPU_BATCH_2'}
+                            [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
+                                AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
+                                Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns),bp_est_bools(bBool,1,Columns)]...
+                            = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
+                                      logT_extrap(:,:,Columns),...
+                                      BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
+                                      'Aicelib',Aicelibs,'nIter',nIter,...
+                                      'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                                      'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                                      'gpu',gpu,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
+                                      'THRESHOLD_BADSPC',th_badspc,...
+                                      'WEIGHT_MODE',weight_mode,...
+                                      'STDL1_IFDF',stdl1_ifdf(:,:,Columns),'SFIMG',SFimg(:,:,Columns),...
+                                      'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl,'FFC_MODE',ffc_mode,...
+                                      'DEBUG',is_debug,...
+                                      'Bands_Bias_MAD',bands_bias_mad);
+                    end
             end
             switch upper(PROC_MODE)
                 case {'GPU_BATCH_2'}
@@ -951,6 +1058,24 @@ switch upper(PROC_MODE)
                     = logYif(:,:,Columns) ...
                     - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xt_c)))...
                     -Ice_est(bBool,lBool,Columns);
+                case {'GPU_BATCH_3'}
+                    Yif_cor_ori(bBool,lBool,Columns)...
+                    = logYif(:,:,Columns) ...
+                    - gather(pagefun(@mtimes,gpuArray(logT_extrap(:,:,Columns)),gpuArray(Xt_c)))...
+                    -Ice_est(bBool,lBool,Columns) - mc(bBool,:,Columns);
+                case {'CPU_3','GPU_3'}
+                    Yif_cor_ori(bBool,lBool,Columns) ...
+                    = logYif(:,:,Columns)-logT_extrap(:,:,Columns)*Xt_c...
+                      -Ice_est(bBool,lBool,Columns) - mc(bBool,:,Columns);
+                case {'GPU_BATCH_4'}
+                    Yif_cor_ori(bBool,lBool,Columns)...
+                    = logYif(:,:,Columns) ...
+                    - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xt_c)))...
+                    -Ice_est(bBool,lBool,Columns) - mc(bBool,:,Columns);
+                case {'CPU_4','GPU_4'}
+                    Yif_cor_ori(bBool,lBool,Columns) ...
+                    = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xt_c...
+                      -Ice_est(bBool,lBool,Columns) - mc(bBool,:,Columns);
                 otherwise
                     Yif_cor_ori(bBool,lBool,Columns) ...
                     = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xt_c...
@@ -964,6 +1089,14 @@ switch upper(PROC_MODE)
             [ancillaries(Columns).Xlib] = Xlib_c_cell{:};
             [ancillaries(Columns).Xice] = Xice_c_cell{:};
             
+            switch upper(PROC_MODE)
+                case {'CPU_3','GPU_3','GPU_BATCH_3'}
+                    logT_cell = squeeze(num2cell(logT_extrap(:,:,Columns),[1,2]));
+                    [ancillaries(Columns).AlogT] = logT_cell{:};
+                    
+            end
+            toc;
+            
         end
         Yif_cor = permute(Yif_cor,[2,3,1]);
         Yif_cor_ori = permute(Yif_cor_ori,[2,3,1]);
@@ -971,14 +1104,32 @@ switch upper(PROC_MODE)
         Bg_est = permute(Bg_est,[2,3,1]);
         AB_est = permute(AB_est,[2,3,1]);
         Ice_est = permute(Ice_est,[2,3,1]);
-        T_est  = squeeze(T_est);
+        switch upper(PROC_MODE)
+            case {'CPU_2','GPU_2','GPU_BATCH_2'}
+                T_est  = squeeze(T_est);
+            case {'CPU_3','GPU_3','GPU_BATCH_3'}
+                mc = squeeze(mc);
+            case {'CPU_4','GPU_4','GPU_BATCH_4'}
+                T_est  = squeeze(T_est);
+                mc = squeeze(mc);
+        end
+        bp_est_bools = permute(bp_est_bools,[2,3,1]);
         badspcs = squeeze(badspcs);
         Valid_pixels = ~badspcs;
     
-        Yif_cor = exp(Yif_cor); T_est = exp(T_est);
+        Yif_cor = exp(Yif_cor); 
         Bg_est = exp(Bg_est); AB_est = exp(AB_est); 
         Ice_est = exp(Ice_est);
         Yif_cor_ori = exp(Yif_cor_ori);
+        switch upper(PROC_MODE)
+            case {'CPU_2','GPU_2','GPU_BATCH_2'}
+                T_est = exp(T_est);
+            case {'CPU_3','GPU_3','GPU_BATCH_3'}
+                mc = exp(mc);
+            case {'CPU_4','GPU_4','GPU_BATCH_4'}
+                T_est = exp(T_est);
+                mc = exp(mc);
+        end
     otherwise
         error('Undefined PROC_MODE=%s',PROC_MODE);
         
@@ -1012,6 +1163,7 @@ fprintf(fid,'Username: %s\n',username);
 fprintf(fid,'Time finished: %s\n',dt);
 
 % ## I/O OPTIONS #---------------------------------------------------------
+fprintf(fid,'SAVE_FILE: %d\n',save_file);
 fprintf(fid,'SAVE_PDIR: %s\n',save_pdir);
 fprintf(fid,'SAVE_DIR_YYYY_DOY: %d\n',save_dir_yyyy_doy);
 fprintf(fid,'FORCE: %d\n',force);
@@ -1035,6 +1187,10 @@ fprintf(fid,'COLUMN_SKIP: %d\n',column_skip);
 fprintf(fid,'WEIGHT_MODE: %d\n',weight_mode);
 fprintf(fid,'LAMBDA_UPDATE_RULE: %s\n',lambda_update_rule);
 fprintf(fid,'THRESHOLD_BADSPC: %f\n',th_badspc);
+fprintf(fid,'FFC_MODE: %d\n',ffc_mode);
+
+% ## PRE-PROCESSING OPTIONS #----------------------------------------------
+fprintf(fid,'CAL_BIAS_COR: %d\n', cal_bias_cor);
 
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
 fprintf(fid,'T_MODE: %d\n', t_mode);
@@ -1066,6 +1222,7 @@ fprintf(fid,'LAMBDA_A:'); fprintf(fid,' %f',lambda_a); fprintf(fid,'\n');
 % ## PROCESSING OPTIONS #--------------------------------------------------
 fprintf(fid,'PRECISION: %s\n',precision);
 fprintf(fid,'PROC_MODE: %s\n',PROC_MODE);
+fprintf(fid,'DEBUG: %d\n',is_debug);
 
 % ## ETCETERA #------------------------------------------------------------
 % fprintf(fid,'GAUSSSIGMA: %f\n',gausssigma);
@@ -1074,6 +1231,57 @@ if fid>1
     fclose(fid);
 end
 
+%% dump to settings
+settings = [];
+settings.hostname = hostname;
+settings.username = username;
+settings.dt = dt;
+% ## I/O OPTIONS #---------------------------------------------------------
+settings.save_file = save_file;
+settings.save_pdir = save_pdir;
+settings.save_dir_yyyy_doy = save_dir_yyyy_doy;
+settings.force = force;
+settings.skip_ifexist = skip_ifexist;
+settings.additional_suffix = additional_suffix;
+settings.interleave_out = interleave_out;
+settings.subset_columns_out = subset_columns_out;
+settings.Alib_out = Alib_out;
+% ## GENERAL SABCOND OPTIONS #---------------------------------------------
+settings.opt_img = opt_img;
+settings.trry_pdir = dir_yuk;
+settings.ffc_if_counter = ffc_counter;
+settings.bands_opt = bands_opt;
+settings.lines = line_idxes;
+settings.columns = column_idxes;
+settings.mt = mt;
+settings.optBP = optBP;
+settings.verbose = verbose;
+settings.column_skip = column_skip;
+settings.weight_mode = weight_mode;
+settings.lambda_update_rule = lambda_update_rule;
+settings.th_badspc = th_badspc;
+settings.ffc_mode = ffc_mode;
+% ## PRE-PROCESSING OPTIONS #----------------------------------------------
+settings.cal_bias_cor = cal_bias_cor;
+% ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
+settings.t_mode = t_mode;
+settings.obs_id_T = obs_id_T;
+settings.varargin_T = varargin_T;
+% ## LIBRARY OPTIONS #-----------------------------------------------------
+settings.cntRmvl = cntRmvl;
+settings.optInterpid = optInterpid;
+settings.optCRISMspclib = optCRISMspclib;
+settings.optRELAB = optRELAB;
+settings.optUSGSsplib = optUSGSsplib;
+settings.optCRISMTypeLib = optCRISMTypeLib;
+settings.opticelib = opticelib;
+% ## SABCONDC OPTIONS #----------------------------------------------------
+settings.nIter = nIter;
+settings.lambda_a = lambda_a;
+% ## PROCESSING OPTIONS #--------------------------------------------------
+settings.precision = precision;
+settings.PROC_MODE = PROC_MODE;
+settings.debug = is_debug;
 
 %% Post processing
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1165,8 +1373,19 @@ if save_file
             wa = WAdata.img;
             wa = squeeze(wa)';
             fprintf('Saving %s ...\n',fname_supple);
-            save(fname_supple,'wa','bands','line_idxes','T_est','BP','GP',...
-                'ancillaries','Valid_pixels');
+
+            switch upper(PROC_MODE)
+                case {'CPU_3','GPU_3','GPU_BATCH_3'}
+                    save(fname_supple,'wa','bands','line_idxes','mc','BP','GP','bp_est_bools',...
+                        'ancillaries','Valid_pixels','settings');
+                case {'CPU_4','GPU_4','GPU_BATCH_4'}
+                    save(fname_supple,'wa','bands','line_idxes','T_est','mc','BP','GP','bp_est_bools',...
+                        'ancillaries','Valid_pixels','settings');
+                otherwise
+                    save(fname_supple,'wa','bands','line_idxes','T_est','BP','GP','bp_est_bools',...
+                        'ancillaries','Valid_pixels','settings');
+            end
+
             fprintf('Done\n');
 
             basename_Bg = [basename_cr '_Bg'];
@@ -1299,6 +1518,9 @@ out = [];
 if nargout==0
     
 elseif nargout==1
+    out.obs_id = obs_id;
+    out.TRR3IF = TRRIFdata.basename;
+    
     WA = squeeze(WAdata.img(:,:,:))';
     % take the subset of the columns
     if subset_columns_out
@@ -1309,10 +1531,19 @@ elseif nargout==1
         AB_est      = AB_est(:,column_idxes,:);
         Bg_est      = Bg_est(:,column_idxes,:);
         WA          = WA(:,column_idxes);
-        T_est       = T_est(:,column_idxes);
+        switch upper(PROC_MODE)
+            case {'CPU_3','GPU_3','GPU_BATCH_3'}
+                mc = mc(:,column_idxes);
+            case {'CPU_4','GPU_4','GPU_BATCH_4'}
+                mc = mc(:,column_idxes);
+                T_est = T_est(:,column_idxes);
+            otherwise
+                T_est = T_est(:,column_idxes);
+        end
         Valid_pixels= Valid_pixels(:,column_idxes);
         GP = GP(:,column_idxes,:);
         BP = BP(:,column_idxes,:);
+        bp_est_bools = bp_est_bools(:,column_idxes,:);
         if ~isempty(opticelib)
             Ice_est = Ice_est(:,column_idxes,:);
         end
@@ -1330,6 +1561,7 @@ elseif nargout==1
     Valid_pixels= permute(Valid_pixels,prmt_ordr);
     GP = permute(GP,prmt_ordr);
     BP = permute(BP,prmt_ordr);
+    bp_est_bools = permute(bp_est_bools,prmt_ordr);
     if ~isempty(opticelib)
         Ice_est = permute(Ice_est,    prmt_ordr);
     end
@@ -1342,7 +1574,16 @@ elseif nargout==1
     if ~isempty(opticelib)
         out.Ice_est = Ice_est;
     end
-    out.T_est        = T_est;
+    switch upper(PROC_MODE)
+        case {'CPU_3','GPU_3','GPU_BATCH_3'}
+            out.mc = mc;
+        case {'CPU_4','GPU_4','GPU_BATCH_4'}
+            out.mc = mc;
+            out.T_est = T_est;
+        otherwise
+            out.T_est = T_est;
+    end
+    out.bp_est_bools = bp_est_bools;
     out.Yif_isnan    = Yif_isnan;
     out.Valid_pixels = Valid_pixels;
     out.WA           = WA;
@@ -1358,6 +1599,7 @@ elseif nargout==1
         ancillaries  = ancillaries(column_idxes);
     end
     out.ancillaries  = ancillaries;
+    out.settings = settings;
     
 end
 
