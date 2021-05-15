@@ -454,7 +454,7 @@ if TRRIF_is_empty
     TRRIFdata = TRRRAdata;
 end
 
-[DFdata1,DFdata2] = get_DFdata4SC(TRRIFdata,crism_obs);
+[DFdata1,DFdata2] = crism_get_DFdata4SC(TRRIFdata,crism_obs);
 
 %%
 %-------------------------------------------------------------------------%
@@ -579,7 +579,7 @@ if cal_bias_cor
     bands_bias_mad = permute(band_bias_std(:,:,bands),[3,1,2]) .* norminv(0.75);
 else
     dev_coef = ones(1,size(Yif,2),length(bands4bias));
-    bands_bias_mad = zeros(lengh(bands),1);
+    bands_bias_mad = zeros(length(bands),1);
 end
 
 % apply biases for severely corrupted ones.
