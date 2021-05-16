@@ -167,7 +167,7 @@ for i=1:length(obs_id_list)
     % Atmospheric correction and denoising.
     %---------------------------------------------------------------------%
     result = ...
-        sabcondv3_pub_water_ice_test(obs_id,3,...'t_mode',t_mode,'lambda_a',lambda_a,...
+        sabcondv3_pub_water_ice_test(obs_id,3,'t_mode',t_mode,'lambda_a',lambda_a,...
             'opt_img',opt_img,'img_cube',Yif,'img_cube_band_inverse',0, ...
             'OPTBP',optBP,'nIter',nIter,'Bands_Opt',bands_opt,...
             'PROC_MODE',proc_mode,'precision',precision);
@@ -194,8 +194,11 @@ for i=1:length(obs_id_list)
     % Cleaning. Delete files from the local storage.
     %---------------------------------------------------------------------%
     func_delete = @(dirpath,fnamecell) cellfun(@(x) delete(joinPath(dirpath,x)),fnamecell);
+    % Delete TRDR files
     func_delete(crism_obs_info.dir_trdr,crism_obs_info.fnameTRRwext_local);
+    % Delete EDR files
     func_delete(crism_obs_info.dir_edr ,crism_obs_info.fnameEDRwext_local);
+    % Delete DDR files (you want to remove??)
     func_delete(crism_obs_info.dir_ddr ,crism_obs_info.fnameDDRwext_local);
     
     % CDR
