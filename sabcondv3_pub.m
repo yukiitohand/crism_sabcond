@@ -1509,6 +1509,8 @@ if do_crop_bands
     wa = wa(:,:,bands);
     BP = BP(:,:,bands);
     GP = GP(:,:,bands);
+    hdr_cr.band_names = arrayfun(@(x) sprintf('Band %3d of %s',x,TRRIFdata.basename),(nBall-bands+1),...
+    'UniformOutput',false);
 end
 
 %% SAVING OPERATIONS
