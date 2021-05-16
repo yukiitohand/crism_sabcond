@@ -619,7 +619,7 @@ switch upper(opt_img)
         error('opt_img = %s is not defined',opt_img);
 end
 
-fpath_cr = joinPath(save_dir,[basename_cr,'.img']);
+fpath_cr = joinPath(save_dir,[basename_cr,'_nr_ds.img']);
 if save_file && exist(fpath_cr,'file')
     if skip_ifexist
         return;
