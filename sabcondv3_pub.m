@@ -49,12 +49,17 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %           out.Yif_cor     = Yif_cor;
 %           out.Yif_cor_nr  = Yif_cor_nr;
 %           out.Yif_cor_ori = Yif_cor_ori;
+%           out.Yif_nr_ds   = Yif_nr_ds;
 %           out.AB_est      = AB_est;
 %           out.Bg_est      = Bg_est;
+%           out.AB_est_ds   = AB_est_ds;
+%           out.Bg_est_ds   = Bg_est_ds;
+%           out.Yifmdl_ds   = Yifmdl_ds;
 %           out.T_est       = T_est;
 %           out.Yif_isnan    = Yif_isnan;
 %           out.Valid_pixels = Valid_pixels;
 %           out.WA          = WA;
+%           out.WV          = WV;
 %           out.lines       = line_idxes;
 %           out.columns     = Columns;
 %           out.bands       = bands;
@@ -1050,7 +1055,7 @@ switch upper(PROC_MODE)
         n_batch = ceil(length(Columns_valid)/batch_size);
         
         for ni = 1:n_batch
-            tic;
+            % tic;
             if ni~=n_batch
                 Columns = Columns_valid((1+batch_size*(ni-1)):(batch_size*ni));
             elseif ni==n_batch
@@ -1209,7 +1214,7 @@ switch upper(PROC_MODE)
                     [ancillaries(Columns).AlogT] = logT_cell{:};
                     
             end
-            toc;
+            % toc;
             
         end
         Yif_cor = permute(Yif_cor,[2,3,1]);
@@ -1494,11 +1499,10 @@ if do_crop_bands
         Ice_est = Ice_est(:,:,bands);
     end
     Yif_nr_ds   = Yif_nr_ds(:,:,bands);
-    Yif_nr_ds   = Yif_nr_ds(:,:,bands);
     Yifmdl_ds   = Yifmdl_ds(:,:,bands);
     AB_est_ds   = AB_est_ds(:,:,bands);
     Bg_est_ds   = Bg_est_ds(:,:,bands);
-    hdr_cr.wavlength = hdr_cr.wavlength(bands);
+    hdr_cr.wavelength = hdr_cr.wavelength(bands);
     hdr_cr.fwhm  = hdr_cr.fwhm(bands);
     hdr_cr.bbl   = hdr_cr.bbl(bands);
     hdr_cr.bands = length(bands);

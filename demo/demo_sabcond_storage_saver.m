@@ -34,7 +34,7 @@ storage_saving_level = 'Highest';
 %    Highest - Only nr_ds and mdl_ds are saved, bands are also scropped.
 % (default) Normal
 
-save_pdir = '';
+save_pdir = './resu/';
 % character, string
 % root directory path where the processed data are stored. The processed 
 % image will be saved at <SAVE_PDIR>/CCCNNNNNNNN, where CCC the class type 
@@ -151,7 +151,7 @@ for i=1:length(obs_id_list)
     % fnamesCDR_local gets the filenames of all the relevant CDR files
     % existing in the local storage (used for deleting once the processing
     % is done)
-    TRRIFdata = CRISMdata(crism_obs.info.basenameIF,crism_obs.info.dir_trdr);
+    TRRIFdata = CRISMdata(crism_obs_info.basenameIF,crism_obs_info.dir_trdr);
     [fnamesCDR_local] = TRRIFdata.load_basenamesCDR('Dwld',2,'INDEX_CACHE_UPDATE',true);
     
     %---------------------------------------------------------------------%
@@ -161,13 +161,13 @@ for i=1:length(obs_id_list)
     % supported with mode=yuki2. yuki3 and yuki4 may need additional data
     % to be downloaded.
     [Yif] = crism_calibration_IR_v2(obs_id,'save_memory',true,'mode','yuki2', ...
-        'version','B','skip_ifexist',0,'force',1, 'Dwld',0);
+        'version','B','skip_ifexist',0,'force',1, 'Dwld',0,'save_file',0);
     
     %---------------------------------------------------------------------%
     % Atmospheric correction and denoising.
     %---------------------------------------------------------------------%
     result = ...
-        sabcondv3_pub_water_ice_test(obs_id,3,...'t_mode',t_mode,'lambda_a',lambda_a,...
+        sabcondv3_pub_water_ice_test(obs_id,3,'t_mode',t_mode,'lambda_a',lambda_a,...
             'opt_img',opt_img,'img_cube',Yif,'img_cube_band_inverse',0, ...
             'OPTBP',optBP,'nIter',nIter,'Bands_Opt',bands_opt,...
             'PROC_MODE',proc_mode,'precision',precision);
@@ -194,8 +194,11 @@ for i=1:length(obs_id_list)
     % Cleaning. Delete files from the local storage.
     %---------------------------------------------------------------------%
     func_delete = @(dirpath,fnamecell) cellfun(@(x) delete(joinPath(dirpath,x)),fnamecell);
+    % Delete TRDR files
     func_delete(crism_obs_info.dir_trdr,crism_obs_info.fnameTRRwext_local);
+    % Delete EDR files
     func_delete(crism_obs_info.dir_edr ,crism_obs_info.fnameEDRwext_local);
+    % Delete DDR files (you want to remove??)
     func_delete(crism_obs_info.dir_ddr ,crism_obs_info.fnameDDRwext_local);
     
     % CDR

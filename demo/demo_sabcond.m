@@ -8,15 +8,15 @@ obs_id_list = {'9036'};
 % Download images and calibration.
 for i=1:length(obs_id_list)
     obs_id = obs_id_list{i};
-    crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L','Download_DDR',2,...
+    crism_obs_info = crism_get_obs_info(obs_id,'SENSOR_ID','L','Download_DDR',2,...
        'Download_EDRSCDF',2,'Download_TRRIF',2,'Download_TRRRA',2);
        % 'Download_TER',2);
 end
 
 for i=1:length(obs_id_list)
     obs_id = obs_id_list{i};
-    crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
-    TRRIFdata = CRISMdata(crism_obs.info.basenameIF,crism_obs.info.dir_trdr);
+    crism_obs_info = crism_get_obs_info(obs_id,'SENSOR_ID','L');
+    TRRIFdata = CRISMdata(crism_obs_info.basenameIF,crism_obs_info.dir_trdr);
     TRRIFdata.load_basenamesCDR('Dwld',2);
     crism_calibration_IR_v2(obs_id,'save_memory',true,'mode','yuki2', ...
         'version','B','skip_ifexist',0,'force',1);
@@ -45,7 +45,7 @@ batch_size = 10;
 % 'GPU_BATCH_*' mode is selected.
 
 % ## I/O OPTIONS #---------------------------------------------------------
-save_pdir = '';
+save_pdir = './resu/';
 % character, string
 % root directory path where the processed data are stored. The processed 
 % image will be saved at <SAVE_PDIR>/CCCNNNNNNNN, where CCC the class type 
@@ -140,7 +140,7 @@ lambda_a = 0.01;
 for i=1:length(obs_id_list)
     obs_id = obs_id_list{i};
     result = ...
-        sabcondv3_pub_water_ice_test(obs_id,3,...'t_mode',t_mode,'lambda_a',lambda_a,...
+        sabcondv3_pub_water_ice_test(obs_id,3,'t_mode',t_mode,'lambda_a',lambda_a,...
             'opt_img',opt_img,'OPTBP',optBP,'nIter',nIter,'Bands_Opt',bands_opt,...
             'PROC_MODE',proc_mode,'precision',precision);
     fprintf('water_ice_result: %d\n',result.presence_H2Oice);
