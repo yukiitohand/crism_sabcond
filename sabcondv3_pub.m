@@ -146,6 +146,14 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       Observation counter of the image to be processed. Used only for 
 %       processing FFC images. 
 %       (default) 1
+%   'OBS_COUNTER_SCENE': string
+%        regular expression to match observation counter, such as
+%        '0[13]{1}', observation counter for scene measurements.
+%        (default) depends on observation type
+%   'OBS_COUNTER_DF': 
+%        regular expression to match observation counter, such as
+%        '0[13]{1}', observation counter for dark frame measurements.
+%        (default) depends on observation type
 %
 %  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'BANDS_OPT' : integer, {4}
@@ -185,10 +193,14 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'FFC_MODE': boolean
 %       whether or not to perform FFC correcion
 %       (default) false
+%   'OPT_BANDS_IGNORE_INIT': string, {'none','ltn035'}
+%       options for selecting bands to be ignored in the first iteration
+%       (default) 'none'
 %
 %  ## PRE-PROCESSING OPTIONS #---------------------------------------------
-%   'CAL_BIAS_COR': integer {0,1}
-%       whether or not to perform image based bias correction.
+%   'CAL_BIAS_COR': Integer {0,1,2}
+%       Option for how to perform image based bias correction.
+%       0: none, 1: conservative correction, 2: aggressive correction
 %       (default) 0
 %
 %  ## TRANSMISSION SPECTRUM OPTIONS #--------------------------------------
@@ -234,6 +246,15 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %   'LAMBDA_A': double array or scalar
 %       trade-off parameter of the cost function.
 %       (default) 0.01
+%   'T_UPDATE: scalar,
+%       how many times t is updated
+%       (default) inf (update as many as nIter)
+%   'LOGT_NEG': boolean,
+%       whether or not to force logT to be negative
+%       (default) false
+%   'LOGT_RELAX': boolean,
+%       whether or not to relax logT update with the residuals
+%       (default) false
 %
 %  ## PROCESSING OPTIONS #-------------------------------------------------
 %   'PRECISION': string, {'single','double'}
@@ -275,12 +296,14 @@ subset_columns_out = false;
 Alib_out           = false;
 do_crop_bands      = false;
 
-%  ## INPUT IMAGE OPTIONS #------------------------------------------------
+% ## INPUT IMAGE OPTIONS #-------------------------------------------------
 opt_img      = 'TRRB';
 img_cube     = [];
 img_cube_band_inverse = [];
 dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
 ffc_counter  = 1;
+OBS_COUNTER_SCENE_custom = 0;
+OBS_COUNTER_DF_custom = 0;
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 bands_opt    = 4;
@@ -294,6 +317,7 @@ weight_mode  = 0;
 lambda_update_rule = 'L1SUM';
 th_badspc    = 0.8;
 ffc_mode     = false;
+opt_bands_ignore_init = 'none';
 
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 cal_bias_cor = 0;
@@ -315,12 +339,16 @@ opticelib       = '';
 % ## SABCONDC OPTIONS #----------------------------------------------------
 nIter = 5;
 lambda_a = 0.01;
+t_update     = inf;
+logT_neg = false;
+logt_relax = false;
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 precision  = 'double';
 PROC_MODE  = 'CPU_1';
 batch_size = 10;
 is_debug   = false;
+debug_l_plot = 1;
 
 % ## ETCETERA #------------------------------------------------------------
 % gausssigma = 0.6;
@@ -355,7 +383,7 @@ else
             case 'CROP_BANDS'
                 do_crop_bands = varargin{i+1};
                 
-            %  ## INPUT IMAGE OPTIONS #------------------------------------
+            % ## INPUT IMAGE OPTiONS #-------------------------------------
             case 'OPT_IMG'
                 opt_img = varargin{i+1};
             case 'IMG_CUBE'
@@ -366,6 +394,12 @@ else
                 dir_yuk = varargin{i+1};
             case 'FFC_IF_COUNTER'
                 ffc_counter = varargin{i+1};
+            case 'OBS_COUNTER_SCENE'
+                obs_counter_tmp = varargin{i+1};
+                OBS_COUNTER_SCENE_custom = 1;
+            case 'OBS_COUNTER_DF'
+                obs_counter_df_tmp = varargin{i+1};
+                OBS_COUNTER_DF_custom = 1;
                 
             % ## GENERAL SABCOND OPTIONS #---------------------------------
             case 'BANDS_OPT'
@@ -390,6 +424,8 @@ else
                 th_badspc = varargin{i+1};
             case 'FFC_MODE'
                 ffc_mode = varargin{i+1};
+            case 'OPT_BANDS_IGNORE_INIT'
+                opt_bands_ignore_init = varargin{i+1};
                 
             % % ## PRE-PROCESSING OPTIONS #--------------------------------
             case 'CAL_BIAS_COR'
@@ -424,6 +460,12 @@ else
                 nIter = varargin{i+1};
             case 'LAMBDA_A'
                 lambda_a = varargin{i+1};
+            case 'T_UPDATE'
+                t_update = varargin{i+1};
+            case 'LOGT_NEG'
+                logT_neg = varargin{i+1};
+            case 'LOGT_RELAX'
+                logt_relax = varargin{i+1};
                 
             % ## PROCESSING OPTIONS #--------------------------------------
             case 'PRECISION'
@@ -434,6 +476,8 @@ else
                 batch_size = varargin{i+1};
             case 'DEBUG'
                 is_debug = varargin{i+1};
+            case 'DEBUG_L_PLOT'
+                debug_l_plot = varargin{i+1};
                 
             otherwise
                 error('Unrecognized option: %s',varargin{i});
@@ -489,8 +533,50 @@ switch upper(PROC_MODE)
         error('Undefined PROC_MODE=%s',PROC_MODE);
 end
 
+%% INPUT Image options
+[ yyyy_doy,obs_classType ] = crism_searchOBSID2YYYY_DOY_v2(obs_id);
+switch obs_classType
+    case {'FRT','HRL','HRS'}
+        obs_counter = '07';
+        obs_counter_epf = '[0-689A-Za-z]{2}';
+        obs_counter_epfdf = '0[0E]{1}';
+        obs_counter_df = '0[68]{1}';
+    case {'FRS','ATO'}
+        obs_counter = '01';
+        obs_counter_df = '0[03]{1}';
+        obs_counter_epf = '';
+        obs_counter_epfdf = '';
+        obs_counter_un = '02';
+    case 'FFC'
+        obs_counter = '0[13]{1}';
+        obs_counter_df = '0[024]{1}';
+        % this could be switched.
+        obs_counter_epf = '';
+    case 'CAL'
+        obs_counter = '[0-9a-fA-F]{2}';
+        obs_counter_df = '[0-9a-fA-F]{1}';
+    case 'ICL'
+        obs_counter = '[0-9a-fA-F]{2}';
+        obs_counter_df = '[0-9a-fA-F]{1}';
+    case {'MSP','HSP'}
+        obs_counter = '01';
+        obs_counter_df = '0[02]{1}';
+        obs_counter_epf = '';
+        obs_counter_epfdf = '';
+    otherwise
+        error('OBS_TYPE %s is not supported yet.',obs_classType);
+end
+
+if OBS_COUNTER_SCENE_custom
+    obs_counter = obs_counter_tmp;
+end
+if OBS_COUNTER_DF_custom
+    obs_counter_df = obs_counter_df_tmp;
+end
+
 %% Read image and ancillary data and format them for processing
-crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
+crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L',...
+    'obs_counter_scene',obs_counter,'obs_counter_df',obs_counter_df);
 switch upper(crism_obs.info.obs_classType)
     case {'FRT','HRL','HRS','FRS','ATO','MSP','HSP'}
         TRRIFdata = get_CRISMdata(crism_obs.info.basenameIF,'');
@@ -631,28 +717,41 @@ Yif = Yif(line_idxes,:,:);
 
 % estimate potential biases
 bands4bias = 1:252;
-if cal_bias_cor
-    mat_name = [TRRYIFdata.basename sprintf('_BPpost3%dt%d.mat',bands4bias(1),bands4bias(end))];
-    if exist(mat_name,'file')
-        load(mat_name,'dev_coef','band_bias_std','bands4bias');
-    else
-        [BPpost_plus,band_bias_std,dev_sub,val_ratio_3d2,val_ratio_3d2_smth2] = detect_BPpost_wBias3(...
-            Yif(:,:,:), DMmask,'bands',bands4bias,'debug',is_debug);
-
-        [dev_coef,img_nanmed_estimate,dev_coef_ori] = calc_deviation_BPpost2(...
-            BPpost_plus(1,:,bands4bias),Yif(:,:,bands4bias));
-        save(mat_name,'dev_coef','band_bias_std','dev_sub','img_nanmed_estimate','dev_coef_ori','bands4bias','BPpost_plus','val_ratio_3d2','val_ratio_3d2_smth2');
-    end
-    % bands_bias_mad is for later processing.
-    bands_bias_mad = permute(band_bias_std(:,:,bands),[3,1,2]) .* norminv(0.75);
-else
-    dev_coef = ones(1,size(Yif,2),length(bands4bias));
-    bands_bias_mad = zeros(length(bands),1);
+switch cal_bias_cor
+    case {1,2}
+        mat_name = [TRRYIFdata.basename sprintf('_BPpost3%dt%d.mat',bands4bias(1),bands4bias(end))];
+        if exist(mat_name,'file')
+            load(mat_name,'dev_coef','band_bias_std','bands4bias','dev_sub');
+        else
+            [BPpost_plus,band_bias_std,dev_sub,val_ratio_3d2,val_ratio_3d2_smth2] = detect_BPpost_wBias3(...
+                Yif(:,:,:), DMmask,'bands',bands4bias,'debug',is_debug);
+            
+            [dev_coef,img_nanmed_estimate,dev_coef_ori] = calc_deviation_BPpost2(...
+                BPpost_plus(1,:,bands4bias),Yif(:,:,bands4bias));
+            save(mat_name,'dev_coef','band_bias_std','dev_sub','img_nanmed_estimate','dev_coef_ori','bands4bias','BPpost_plus','val_ratio_3d2','val_ratio_3d2_smth2');
+        end
+        % bands_bias_mad is for later processing.
+        bands_bias_mad = permute(band_bias_std(:,:,bands),[3,1,2]) .* norminv(0.75);
+        
+        switch cal_bias_cor
+            case 1 % conservative correction
+                % dev_coef = dev_coef;
+            case 2 % aggressive correction
+                dev_coef = Yif(:,:,bands4bias) ./ (Yif(:,:,bands4bias)-dev_sub);
+        end
+        
+        
+    case {0}
+        dev_coef = ones(1,size(Yif,2),length(bands4bias));
+        bands_bias_mad = zeros(length(bands),1);
+    otherwise
+        error('Undefined CAL_BIAS_COR=%d',cal_bias_cor);
 end
 
 % apply biases for severely corrupted ones.
 Yif = Yif(:,:,bands4bias)./dev_coef;
 Yif = Yif(:,:,bands);
+Yif(Yif<=0) = nan;
 logYif = log(Yif);
 logYif = permute(logYif,[3,1,2]);
 
@@ -779,7 +878,15 @@ switch t_mode
         error('Undefined t_mode %d',t_mode);
 end
 T = at_trans(:,:,bands); T(T<=1e-8) = nan;
-T = permute(T,[3,1,2]); logT = log(T);
+T = permute(T,[3,1,2]); 
+
+switch precision
+    case 'single'
+        T = single(T);
+    case 'double'
+        T = double(T);
+end
+logT = log(T);
 
 fprintf('finish loading ADR\n');
 %%
@@ -1059,7 +1166,9 @@ switch upper(PROC_MODE)
                                       'STDL1_IFDF',stdl1_ifdf(:,:,Columns),'SFIMG',SFimg(:,:,Columns),...
                                       'WA_UM_PITCH',WA_um_pitch(:,:,Columns),'LBL',TRRIFdata.lbl,'FFC_MODE',ffc_mode,...
                                       'DEBUG',is_debug,...
-                                      'Bands_Bias_MAD',bands_bias_mad);
+                                      'Bands_Bias_MAD',bands_bias_mad,...
+                                      'T_UPDATE',t_update,'LOGT_NEG',logT_neg,'logt_relax',logt_relax,...
+                                      'opt_bands_ignore_init',opt_bands_ignore_init,'debug_l_plot',debug_l_plot);
                     end
             end
             switch upper(PROC_MODE)
@@ -1194,12 +1303,14 @@ fprintf(fid,'SUBSET_COLUMNS_OUT: %d\n', subset_columns_out);
 fprintf(fid,'ALIB_OUT: %d\n',Alib_out);
 fprintf(fid,'CROP_BANDS: %d\n',do_crop_bands);
 
-%  ## INPUT IMAGE OPTIONS #------------------------------------------------
+% ## INPUT IMAGE OPTIONS #-------------------------------------------------
 fprintf(fid,'OPT_IMG: %s\n',opt_img);
 fprintf(fid,'IMG_CUBE is empty: %s',img_cube_isempty);
 fprintf(fid,'IMG_CUBE_BAND_INVERSE: %d',img_cube_band_inverse);
 fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
 fprintf(fid,'FFC_IF_COUNTER: %d\n',ffc_counter);
+fprintf(fid,'OBS_COUNTER: %d\n', obs_counter);
+fprintf(fid,'OBS_COUNTER_DF: %d\n', obs_counter_df);
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 fprintf(fid,'BANDS_OPT: %d\n',bands_opt);
@@ -1213,6 +1324,7 @@ fprintf(fid,'WEIGHT_MODE: %d\n',weight_mode);
 fprintf(fid,'LAMBDA_UPDATE_RULE: %s\n',lambda_update_rule);
 fprintf(fid,'THRESHOLD_BADSPC: %f\n',th_badspc);
 fprintf(fid,'FFC_MODE: %d\n',ffc_mode);
+fprintf(fid,'OPT_BANDS_IGNORE_INIT: %s\n',opt_bands_ignore_init);
 
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 fprintf(fid,'CAL_BIAS_COR: %d\n', cal_bias_cor);
@@ -1227,7 +1339,10 @@ for i=1:length(varargin_T)
     else
         string_varargin_T = varargin_T{i};
     end
-    fprintf(' %s', string_varargin_T);
+    fprintf(fid,' "%s"', string_varargin_T);
+    if i<length(varargin_T)
+        fprintf(',');
+    end
 end
 fprintf(fid, '\n');
 
@@ -1243,6 +1358,9 @@ fprintf(fid,'OPT_ICELIB: %d\n',opticelib);
 % ## SABCONDC OPTIONS #----------------------------------------------------
 fprintf(fid,'NITER: %d\n',nIter);
 fprintf(fid,'LAMBDA_A:'); fprintf(fid,' %f',lambda_a); fprintf(fid,'\n');
+fprintf(fid,'T_UPDATE: %d\n',t_update);
+fprintf(fid,'LOGT_NEG: %d\n',logT_neg);
+fprintf(fid,'LOGT_RELAX: %d\n',logt_relax);
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 fprintf(fid,'PRECISION: %s\n',precision);
@@ -1273,12 +1391,14 @@ settings.interleave_out = interleave_out;
 settings.subset_columns_out = subset_columns_out;
 settings.Alib_out = Alib_out;
 settings.crop_bands = do_crop_bands;
-%  ## INPUT IMAGE OPTIONS #------------------------------------------------
+% ## INPUT IMAGE OPTIONS #-------------------------------------------------
 settings.opt_img = opt_img;
 settings.img_cube_isempty = img_cube_isempty;
 settings.img_cube_band_inverse = img_cube_band_inverse;
 settings.trry_pdir = dir_yuk;
 settings.ffc_if_counter = ffc_counter;
+settings.obs_counter = obs_counter;
+settings.obs_counter_df = obs_counter_df;
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 settings.bands_opt = bands_opt;
 settings.lines = line_idxes;
@@ -1291,6 +1411,7 @@ settings.weight_mode = weight_mode;
 settings.lambda_update_rule = lambda_update_rule;
 settings.th_badspc = th_badspc;
 settings.ffc_mode = ffc_mode;
+settings.opt_bands_ignore_init = opt_bands_ignore_init;
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 settings.cal_bias_cor = cal_bias_cor;
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
@@ -1308,6 +1429,9 @@ settings.opticelib = opticelib;
 % ## SABCONDC OPTIONS #----------------------------------------------------
 settings.nIter = nIter;
 settings.lambda_a = lambda_a;
+settings.t_update = t_update;
+settings.logT_neg = logT_neg;
+settings.logt_relax = logt_relax;
 % ## PROCESSING OPTIONS #--------------------------------------------------
 settings.precision = precision;
 settings.PROC_MODE = PROC_MODE;
