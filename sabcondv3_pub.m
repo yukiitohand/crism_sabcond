@@ -778,7 +778,7 @@ switch lower(optBP)
         GP1nan = permute(GP1nanfull(:,:,bands),[3,1,2]);
         BP1nan = permute(BP1nanfull(:,:,bands),[3,1,2]);
     case 'none'
-        GP1nan = one(nB,1,nCall);
+        GP1nan = ones(nB,1,nCall);
         BP1nan = nan(nB,1,nCall);
     otherwise 
         error('optBP=%s is not defined.',optBP);
@@ -1469,7 +1469,7 @@ switch opt_img
         hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
     case 'ra_if'
         hdr_cr.cat_input_files = [TRRRAIFdata.basename '_IF.IMG'];
-    case {'TRRY','TRRC','TRRB'}
+    case {'TRRY','TRRC','TRRB','TRRD'}
         hdr_cr.cat_input_files = [basenameTRRY '.IMG'];
     otherwise
         error('opt_img = %s is not defined',opt_img);

@@ -44,7 +44,7 @@ A = ifov_cross_track*ifov_along_track; %[m^2] area from which the light is commi
 % get integration time
 integ_t = lbl.MRO_EXPOSURE_PARAMETER;
 rateHz = lbl.MRO_FRAME_RATE.value;
-[tms] = get_integrationTime(integ_t,rateHz,'Hz');
+[tms] = crism_get_integrationTime(integ_t,rateHz,'Hz');
 tsec = tms/1000; %[s] integration time 
 
 
