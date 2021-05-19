@@ -445,7 +445,18 @@ if save_file && force && skip_ifexist
     error('You are forcing or skipping? Not sure what you want');
 end
 
-if save_file && ~exist(save_pdir,'dir'), mkdir(save_pdir); end
+if save_file && ~exist(save_pdir,'dir'), 
+    [status] = mkdir(save_pdir); 
+    if status
+        if verbose, fprintf('"%s" is created.\n',save_pdir); end
+        if isunix
+            system(['chmod -R 777 ' save_pdir]);
+            if verbose, fprintf('"%s": permission is set to 777.\n',save_pdir); end
+        end
+    else
+        error('Failed to create %s',save_pdir);
+    end
+end
 
 switch upper(storage_saving_level)
     case 'HIGHEST'
@@ -510,10 +521,49 @@ end
 %-------------------------------------------------------------------------%
 % cheking the file exist or not.
 %-------------------------------------------------------------------------%
-if save_dir_yyyy_doy
-    save_dir = joinPath(save_pdir,crism_obs.info.yyyy_doy,crism_obs.info.dirname);
-else
-    save_dir = joinPath(save_pdir,crism_obs.info.dirname);
+if save_file
+    if save_dir_yyyy_doy
+        dirpath_yyyy_doy = joinPath(save_pdir,crism_obs.info.yyyy_doy);
+        if ~exist(dirpath_yyyy_doy,'dir')
+            status = mkdir(dirpath_yyyy_doy);
+            if status
+                if verbose, fprintf('"%s" is created.\n',dirpath_yyyy_doy); end
+                if isunix
+                    system(['chmod -R 777 ' dirpath_yyyy_doy]);
+                    if verbose, fprintf('"%s": permission is set to 777.\n',dirpath_yyyy_doy); end
+                end
+            else
+                error('Failed to create %s',dirpath_yyyy_doy);
+            end
+        end
+        save_dir = joinPath(dirpath_yyyy_doy,crism_obs.info.dirname);
+        if ~exist(save_dir,'dir')
+            status = mkdir(save_dir);
+            if status
+                if verbose, fprintf('"%s" is created.\n',save_dir); end
+                if isunix
+                    system(['chmod -R 777 ' save_dir]);
+                    if verbose, fprintf('"%s": permission is set to 777.\n',save_dir); end
+                end
+            else
+                error('Failed to create %s',save_dir);
+            end
+        end
+    else
+        save_dir = joinPath(save_pdir,crism_obs.info.dirname);
+        if ~exist(save_dir,'dir')
+            status = mkdir(save_dir);
+            if status
+                if verbose, fprintf('"%s" is created.\n',save_dir); end
+                if isunix
+                    system(['chmod -R 777 ' save_dir]);
+                    if verbose, fprintf('"%s": permission is set to 777.\n',save_dir); end
+                end
+            else
+                error('Failed to create %s',save_pdir);
+            end
+        end
+    end
 end
 
 suffix = const_suffix_v3(mt,additional_suffix);
@@ -563,8 +613,9 @@ if save_file && ~exist(save_dir,'dir'), mkdir(save_dir); end
 
 % open log file
 username = char(java.lang.System.getProperty('user.name'));
-fname = sprintf('log_%s_%s.txt',username,datetime('now','TimeZone','local','Format','yyyyMMdd'));
-if save_file, diary(joinPath(save_dir,fname)); end
+fname_log = sprintf('log_%s_%s.txt',username,datetime('now','TimeZone','local','Format','yyyyMMdd'));
+fpath_diary = joinPath(save_dir,fname_log);
+if save_file, diary(fpath_diary); end
 
 %% Read image and ancillary data and format them for processing
 TRRIFdata.load_basenamesCDR();
@@ -1168,10 +1219,11 @@ fprintf('Processing time is %s\n',tend-tstart);
 % save results
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Write a setting file.
-fname = [basename_cr '_settings.txt'];
+fname_setting = [basename_cr '_settings.txt'];
 if save_file
     fprintf('Now saving...\n');
-    fid = fopen(joinPath(save_dir,fname),'w');
+    setting_file_path = joinPath(save_dir,fname_setting);
+    fid = fopen(setting_file_path,'w');
 else
     fid = 1; % standard output
 end
@@ -1254,6 +1306,7 @@ fprintf(fid,'DEBUG: %d\n',is_debug);
 
 if fid>1
     fclose(fid);
+    chmod777(setting_file_path,verbose);
 end
 
 %% dump to settings
@@ -1393,63 +1446,72 @@ end
 if save_file
     switch upper(storage_saving_level)
         case 'NORMAL'
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.hdr']));
-            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_cr '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.img']));
-            envidatawrite(single(Yif_cor),joinPath(save_dir,[basename_cr '.img']),hdr_cr);
-            fprintf('Done\n');
-
+            save_output_img(single(Yif_cor),hdr_cr,basename_cr,save_dir,verbose);
+            % fpath_hdr = joinPath(save_dir, [basename_cr '.hdr']);
+            % fprintf('Saving %s ...\n',fpath_hdr);
+            % envihdrwritex(hdr_cr,fpath_hdr,'OPT_CMOUT',false);
+            % chmod777(fpath_hdr,verbose);
+            % fprintf('Done\n');
+            % fpath_img = joinPath(save_dir, [basename_cr '.img']);
+            % fprintf('Saving %s ...\n',fpath_img);
+            % envidatawrite(single(Yif_cor),fpath_img,hdr_cr);
+            % chmod777(fpath_img,verbose);
+            % fprintf('Done\n');
+            
             basename_ori = [basename_cr '_ori'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.hdr']));
-            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_ori '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
-            envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yif_cor_ori),hdr_cr,basename_ori,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.hdr']));
+            % envihdrwritex(hdr_cr,joinPath(save_dir,[basename_ori '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
+            % envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
+            % fprintf('Done\n');
 
-            fname_supple = joinPath(save_dir,[basename_cr '.mat']);
+            fpath_supple = joinPath(save_dir,[basename_cr '.mat']);
             wa = squeeze(wa)';
-            fprintf('Saving %s ...\n',fname_supple);
+            fprintf('Saving %s ...\n',fpath_supple);
 
             switch upper(PROC_MODE)
                 case {'CPU_3','GPU_3','GPU_BATCH_3'}
-                    save(fname_supple,'wa','bands','line_idxes','mc','BP','GP','bp_est_bools',...
+                    save(fpath_supple,'wa','bands','line_idxes','mc','BP','GP','bp_est_bools',...
                         'ancillaries','Valid_pixels','settings');
                 case {'CPU_4','GPU_4','GPU_BATCH_4'}
-                    save(fname_supple,'wa','bands','line_idxes','T_est','mc','BP','GP','bp_est_bools',...
+                    save(fpath_supple,'wa','bands','line_idxes','T_est','mc','BP','GP','bp_est_bools',...
                         'ancillaries','Valid_pixels','settings');
                 otherwise
-                    save(fname_supple,'wa','bands','line_idxes','T_est','BP','GP','bp_est_bools',...
+                    save(fpath_supple,'wa','bands','line_idxes','T_est','BP','GP','bp_est_bools',...
                         'ancillaries','Valid_pixels','settings');
             end
-
+            chmod777(fpath_supple,verbose);
             fprintf('Done\n');
 
             basename_Bg = [basename_cr '_Bg'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
-            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.img']));
-            envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Bg_est),hdr_cr,basename_Bg,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
+            % envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.img']));
+            % envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
+            % fprintf('Done\n');
 
             basename_AB = [basename_cr '_AB'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
-            envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
-            envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(AB_est),hdr_cr,basename_AB,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
+            % envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
+            % envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
+            % fprintf('Done\n');
 
             if ~isempty(opticelib)
                 basename_Ice = [basename_cr '_Ice'];
-                fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.hdr']));
-                envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
-                fprintf('Done\n');
-                fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
-                envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
-                fprintf('Done\n');
+                save_output_img(single(Ice_est),hdr_cr,basename_Ice,save_dir,verbose);
+                % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.hdr']));
+                % envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
+                % fprintf('Done\n');
+                % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
+                % envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
+                % fprintf('Done\n');
             end
             
             % Nan Replaced data (nr)
@@ -1458,40 +1520,44 @@ if save_file
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
             hdr_cr_nr.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
             hdr_cr_nr.cat_history = [hdr_cr_nr.cat_history '_nr'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.hdr']));
-            envihdrwritex(hdr_cr_nr,joinPath(save_dir,[basename_cr_nr '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
-            envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yif_cor_nr),hdr_cr_nr,basename_cr_nr,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.hdr']));
+            % envihdrwritex(hdr_cr_nr,joinPath(save_dir,[basename_cr_nr '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
+            % envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
+            % fprintf('Done\n');
 
             basename_nr_ds = [basename_cr_nr '_ds'];
             hdr_nr_ds = hdr_cr_nr;
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
             hdr_nr_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
             hdr_nr_ds.cat_history = [hdr_cr_nr.cat_history '_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
-            envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yif_nr_ds),hdr_nr_ds,basename_nr_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
+            % envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
             
             basename_Bg_ds = [basename_Bg '_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_Bg_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.img']));
-            envidatawrite(single(Bg_est_ds),joinPath(save_dir, [basename_Bg_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Bg_est_ds),hdr_nr_ds,basename_Bg_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_Bg_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.img']));
+            % envidatawrite(single(Bg_est_ds),joinPath(save_dir, [basename_Bg_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
 
             basename_AB_ds = [basename_AB '_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir, [basename_AB_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.img']));
-            envidatawrite(single(AB_est_ds),joinPath(save_dir, [basename_AB_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(AB_est_ds),hdr_nr_ds,basename_AB_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir, [basename_AB_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.img']));
+            % envidatawrite(single(AB_est_ds),joinPath(save_dir, [basename_AB_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
             
         case 'HIGHEST'
             % With STORAGE_SAVING_LEVEL=HIGHEST, only desmiled nan replaced
@@ -1501,24 +1567,26 @@ if save_file
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
             hdr_nr_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
             hdr_nr_ds.cat_history = [hdr_cr.cat_history '_nr_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
-            envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yif_nr_ds),hdr_nr_ds,basename_nr_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
+            % envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
             
             basename_mdl_ds = [basename_cr '_mdl_ds'];
             hdr_mdl_ds = hdr_cr;
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
             hdr_mdl_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
             hdr_mdl_ds.cat_history = [hdr_cr.cat_history '_mdl_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_mdl_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.img']));
-            envidatawrite(single(Yifmdl_ds),joinPath(save_dir, [basename_mdl_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yifmdl_ds),hdr_mdl_ds,basename_mdl_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_mdl_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.img']));
+            % envidatawrite(single(Yifmdl_ds),joinPath(save_dir, [basename_mdl_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
     end
 end
 
@@ -1552,7 +1620,14 @@ end
 
 fprintf('Process completed!\n');
 
-if save_file, diary off; end
+if save_file
+    diary off;
+    chmod777(fpath_diary,verbose);
+    % if isunix
+    %     system(['chmod 777 ' fpath_diary]);
+    %     if verbose, fprintf('"%s": permission is set to 777.\n',fpath_diary); end
+    % end
+end
 
 %% Construct output
 out = [];
@@ -1659,3 +1734,17 @@ end
 
 
 end
+
+function save_output_img(img,hdr,basename,save_dir,verbose)
+fpath_hdr = joinPath(save_dir, [basename '.hdr']);
+fprintf('Saving %s ...\n',fpath_hdr);
+envihdrwritex(hdr,fpath_hdr,'OPT_CMOUT',false);
+chmod777(fpath_hdr,verbose);
+fprintf('Done\n');
+fpath_img = joinPath(save_dir, [basename '.img']);
+fprintf('Saving %s ...\n',fpath_img);
+envidatawrite(img,fpath_img,hdr);
+chmod777(fpath_img,verbose);
+fprintf('Done\n');
+end
+
