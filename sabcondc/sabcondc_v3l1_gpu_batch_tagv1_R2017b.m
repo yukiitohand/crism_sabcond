@@ -760,7 +760,7 @@ for n=2:nIter
     else
         RR = RR - logt_est*Xtc;
     end
-    resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
+    resNewNrm = nansum(nansum(abs(lambda_r .* RR),1),2);
     
     % do we need to update lambda here? not sure.
     
