@@ -245,7 +245,7 @@ vldpxl = ~any(isnan(logYifc_bprmvd),1);
 
 % Xlib = X1(idxAlib,:); Xlogtc = X1(idxAlogtc,:);
 RR_bprmvd = logYifc_bprmvd - logYifc_model_bprmvd;
-resNrm_bprmvd = nansum(abs(RR_bprmvd),'all');
+resNrm_bprmvd = nansum(nansum(abs(RR_bprmvd),1),2);
 RR_bprmvd = RR_bprmvd + A_bprmvd(:,idxAlogtc) * X1(idxAlogtc,:);
 
 Xlogtc_1d = sum(X1(idxAlogtc,:),1);
@@ -258,7 +258,7 @@ Rhov_lad = ones(1+Ny,1,precision);
 
 logt_est_bprmvd = logt_est_bprmvd';
 RR_bprmvd = RR_bprmvd - logt_est_bprmvd*Xlogtc_1d;
-resNewNrm_bprmvd = nansum(abs(RR_bprmvd),'all');
+resNewNrm_bprmvd = nansum(nansum(abs(RR_bprmvd),1),2);
 
 %%
 %-------------------------------------------------------------------------%
@@ -332,7 +332,7 @@ for j=2:nIter+1
     
     %evaluate residual again
     RR_bprmvd = logYifc_bprmvd - logYifc_model_bprmvd;
-    resNrm_bprmvd = nansum(abs(RR_bprmvd),'all');
+    resNrm_bprmvd = nansum(nansum(abs(RR_bprmvd),1),2);
 
     %update logt_est!
     RR_bprmvd = RR_bprmvd + A_bprmvd(:,1)*X(1,:);
@@ -347,7 +347,7 @@ for j=2:nIter+1
     
     %
     RR_bprmvd = RR_bprmvd - logt_est_bprmvd*X(1,:);
-    resNewNrm_bprmvd = nansum(abs(RR_bprmvd),'all');
+    resNewNrm_bprmvd = nansum(nansum(abs(RR_bprmvd),1),2);
     
     A_bprmvd(:,1) = logt_est_bprmvd;
     
