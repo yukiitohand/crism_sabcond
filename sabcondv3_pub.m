@@ -279,7 +279,7 @@ do_crop_bands      = false;
 opt_img      = 'TRRB';
 img_cube     = [];
 img_cube_band_inverse = [];
-dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
+dir_TRRX      = crism_env_vars.dir_TRRX; % TRRY_PDIR
 ffc_counter  = 1;
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
@@ -363,7 +363,7 @@ else
             case 'IMG_CUBE_BAND_INVERSE'
                 img_cube_band_inverse = varargin{i+1};
             case 'TRRY_PDIR'
-                dir_yuk = varargin{i+1};
+                dir_TRRX = varargin{i+1};
             case 'FFC_IF_COUNTER'
                 ffc_counter = varargin{i+1};
                 
@@ -445,14 +445,11 @@ if save_file && force && skip_ifexist
     error('You are forcing or skipping? Not sure what you want');
 end
 
-if save_file && ~exist(save_pdir,'dir'), 
+if save_file && ~exist(save_pdir,'dir')
     [status] = mkdir(save_pdir); 
     if status
         if verbose, fprintf('"%s" is created.\n',save_pdir); end
-        if isunix
-            system(['chmod -R 777 ' save_pdir]);
-            if verbose, fprintf('"%s": permission is set to 777.\n',save_pdir); end
-        end
+        chmod777(save_pdir,verbose);
     else
         error('Failed to create %s',save_pdir);
     end
@@ -528,10 +525,7 @@ if save_file
             status = mkdir(dirpath_yyyy_doy);
             if status
                 if verbose, fprintf('"%s" is created.\n',dirpath_yyyy_doy); end
-                if isunix
-                    system(['chmod -R 777 ' dirpath_yyyy_doy]);
-                    if verbose, fprintf('"%s": permission is set to 777.\n',dirpath_yyyy_doy); end
-                end
+                chmod777(dirpath_yyyy_doy,verbose);
             else
                 error('Failed to create %s',dirpath_yyyy_doy);
             end
@@ -541,10 +535,7 @@ if save_file
             status = mkdir(save_dir);
             if status
                 if verbose, fprintf('"%s" is created.\n',save_dir); end
-                if isunix
-                    system(['chmod -R 777 ' save_dir]);
-                    if verbose, fprintf('"%s": permission is set to 777.\n',save_dir); end
-                end
+                chmod777(save_dir,verbose);
             else
                 error('Failed to create %s',save_dir);
             end
@@ -555,12 +546,9 @@ if save_file
             status = mkdir(save_dir);
             if status
                 if verbose, fprintf('"%s" is created.\n',save_dir); end
-                if isunix
-                    system(['chmod -R 777 ' save_dir]);
-                    if verbose, fprintf('"%s": permission is set to 777.\n',save_dir); end
-                end
+                chmod777(save_dir,verbose);
             else
-                error('Failed to create %s',save_pdir);
+                error('Failed to create %s',save_dir);
             end
         end
     end
@@ -583,27 +571,30 @@ switch upper(opt_img)
         error('opt_img = %s is not defined',opt_img);
 end
 
-fpath_cr = joinPath(save_dir,[basename_cr,'_nr_ds.img']);
-if save_file && exist(fpath_cr,'file')
-    if skip_ifexist
-        return;
-    elseif ~force
-        flg = 1;
-        while flg
-            prompt = sprintf('There exists the image %s\n Do you want to continue to process and overwrite?(y/n)',fpath_cr);
-            ow = input(prompt,'s');
-            if any(strcmpi(ow,{'y','n'}))
-                flg=0;
-            else
-                fprintf('Input %s is not valid.\n',ow);
-            end
-        end
-        if strcmpi(ow,'n')
-            fprintf('Process aborted...\n');
-            diary off;
+
+if save_file 
+    fpath_cr = joinPath(save_dir,[basename_cr,'_nr_ds.img']);
+    if exist(fpath_cr,'file')
+        if skip_ifexist
             return;
-        elseif strcmpi(ow,'y')
-            fprintf('processing continues and will overwrite...\n');
+        elseif ~force
+            flg = 1;
+            while flg
+                prompt = sprintf('There exists the image %s\n Do you want to continue to process and overwrite?(y/n)',fpath_cr);
+                ow = input(prompt,'s');
+                if any(strcmpi(ow,{'y','n'}))
+                    flg=0;
+                else
+                    fprintf('Input %s is not valid.\n',ow);
+                end
+            end
+            if strcmpi(ow,'n')
+                fprintf('Process aborted...\n');
+                diary off;
+                return;
+            elseif strcmpi(ow,'y')
+                fprintf('processing continues and will overwrite...\n');
+            end
         end
     end
 end
@@ -613,9 +604,12 @@ if save_file && ~exist(save_dir,'dir'), mkdir(save_dir); end
 
 % open log file
 username = char(java.lang.System.getProperty('user.name'));
-fname_log = sprintf('log_%s_%s.txt',username,datetime('now','TimeZone','local','Format','yyyyMMdd'));
-fpath_diary = joinPath(save_dir,fname_log);
-if save_file, diary(fpath_diary); end
+
+if save_file
+    fname_log = sprintf('log_%s_%s.txt',username,datetime('now','TimeZone','local','Format','yyyyMMdd'));
+    fpath_diary = joinPath(save_dir,fname_log);
+    diary(fpath_diary);
+end
 
 %% Read image and ancillary data and format them for processing
 TRRIFdata.load_basenamesCDR();
@@ -642,7 +636,7 @@ if isempty(img_cube)
             Yif = TRRRAIFdata.readimgi();
 
         case {'TRRY','TRRB','TRRC','TRRD'}
-            d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+            d_IoF = joinPath(dir_TRRX, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
             TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
             Yif = TRRYIFdata.readimgi();
 
@@ -1250,7 +1244,7 @@ fprintf(fid,'CROP_BANDS: %d\n',do_crop_bands);
 fprintf(fid,'OPT_IMG: %s\n',opt_img);
 fprintf(fid,'IMG_CUBE is empty: %s',img_cube_isempty);
 fprintf(fid,'IMG_CUBE_BAND_INVERSE: %d',img_cube_band_inverse);
-fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
+fprintf(fid,'TRRY_PDIR: %s\n',dir_TRRX);
 fprintf(fid,'FFC_IF_COUNTER: %d\n',ffc_counter);
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
@@ -1330,7 +1324,7 @@ settings.crop_bands = do_crop_bands;
 settings.opt_img = opt_img;
 settings.img_cube_isempty = img_cube_isempty;
 settings.img_cube_band_inverse = img_cube_band_inverse;
-settings.trry_pdir = dir_yuk;
+settings.trry_pdir = dir_TRRX;
 settings.ffc_if_counter = ffc_counter;
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 settings.bands_opt = bands_opt;
