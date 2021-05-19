@@ -300,7 +300,7 @@ do_crop_bands      = false;
 opt_img      = 'TRRB';
 img_cube     = [];
 img_cube_band_inverse = [];
-dir_yuk      = crism_env_vars.dir_YUK; % TRRY_PDIR
+dir_TRRX      = crism_env_vars.dir_TRRX; % TRRY_PDIR
 ffc_counter  = 1;
 OBS_COUNTER_SCENE_custom = 0;
 OBS_COUNTER_DF_custom = 0;
@@ -391,7 +391,7 @@ else
             case 'IMG_CUBE_BAND_INVERSE'
                 img_cube_band_inverse = varargin{i+1};
             case 'TRRY_PDIR'
-                dir_yuk = varargin{i+1};
+                dir_TRRX = varargin{i+1};
             case 'FFC_IF_COUNTER'
                 ffc_counter = varargin{i+1};
             case 'OBS_COUNTER_SCENE'
@@ -489,7 +489,15 @@ if save_file && force && skip_ifexist
     error('You are forcing or skipping? Not sure what you want');
 end
 
-if save_file && ~exist(save_pdir,'dir'), mkdir(save_pdir); end
+if save_file && ~exist(save_pdir,'dir')
+    [status] = mkdir(save_pdir); 
+    if status
+        if verbose, fprintf('"%s" is created.\n',save_pdir); end
+        chmod777(save_pdir,verbose);
+    else
+        error('Failed to create %s',save_pdir);
+    end
+end
 
 switch upper(storage_saving_level)
     case 'HIGHEST'
@@ -596,10 +604,40 @@ end
 %-------------------------------------------------------------------------%
 % cheking the file exist or not.
 %-------------------------------------------------------------------------%
-if save_dir_yyyy_doy
-    save_dir = joinPath(save_pdir,crism_obs.info.yyyy_doy,crism_obs.info.dirname);
-else
-    save_dir = joinPath(save_pdir,crism_obs.info.dirname);
+if save_file
+    if save_dir_yyyy_doy
+        dirpath_yyyy_doy = joinPath(save_pdir,crism_obs.info.yyyy_doy);
+        if ~exist(dirpath_yyyy_doy,'dir')
+            status = mkdir(dirpath_yyyy_doy);
+            if status
+                if verbose, fprintf('"%s" is created.\n',dirpath_yyyy_doy); end
+                chmod777(dirpath_yyyy_doy,verbose);
+            else
+                error('Failed to create %s',dirpath_yyyy_doy);
+            end
+        end
+        save_dir = joinPath(dirpath_yyyy_doy,crism_obs.info.dirname);
+        if ~exist(save_dir,'dir')
+            status = mkdir(save_dir);
+            if status
+                if verbose, fprintf('"%s" is created.\n',save_dir); end
+                chmod777(save_dir,verbose);
+            else
+                error('Failed to create %s',save_dir);
+            end
+        end
+    else
+        save_dir = joinPath(save_pdir,crism_obs.info.dirname);
+        if ~exist(save_dir,'dir')
+            status = mkdir(save_dir);
+            if status
+                if verbose, fprintf('"%s" is created.\n',save_dir); end
+                chmod777(save_dir,verbose);
+            else
+                error('Failed to create %s',save_dir);
+            end
+        end
+    end
 end
 
 suffix = const_suffix_v3(mt,additional_suffix);
@@ -619,27 +657,30 @@ switch upper(opt_img)
         error('opt_img = %s is not defined',opt_img);
 end
 
-fpath_cr = joinPath(save_dir,[basename_cr,'_nr_ds.img']);
-if save_file && exist(fpath_cr,'file')
-    if skip_ifexist
-        return;
-    elseif ~force
-        flg = 1;
-        while flg
-            prompt = sprintf('There exists the image %s\n Do you want to continue to process and overwrite?(y/n)',fpath_cr);
-            ow = input(prompt,'s');
-            if any(strcmpi(ow,{'y','n'}))
-                flg=0;
-            else
-                fprintf('Input %s is not valid.\n',ow);
-            end
-        end
-        if strcmpi(ow,'n')
-            fprintf('Process aborted...\n');
-            diary off;
+
+if save_file 
+    fpath_cr = joinPath(save_dir,[basename_cr,'_nr_ds.img']);
+    if exist(fpath_cr,'file')
+        if skip_ifexist
             return;
-        elseif strcmpi(ow,'y')
-            fprintf('processing continues and will overwrite...\n');
+        elseif ~force
+            flg = 1;
+            while flg
+                prompt = sprintf('There exists the image %s\n Do you want to continue to process and overwrite?(y/n)',fpath_cr);
+                ow = input(prompt,'s');
+                if any(strcmpi(ow,{'y','n'}))
+                    flg=0;
+                else
+                    fprintf('Input %s is not valid.\n',ow);
+                end
+            end
+            if strcmpi(ow,'n')
+                fprintf('Process aborted...\n');
+                diary off;
+                return;
+            elseif strcmpi(ow,'y')
+                fprintf('processing continues and will overwrite...\n');
+            end
         end
     end
 end
@@ -649,8 +690,12 @@ if save_file && ~exist(save_dir,'dir'), mkdir(save_dir); end
 
 % open log file
 username = char(java.lang.System.getProperty('user.name'));
-fname = sprintf('log_%s_%s.txt',username,datetime('now','TimeZone','local','Format','yyyyMMdd'));
-if save_file, diary(joinPath(save_dir,fname)); end
+
+if save_file
+    fname_log = sprintf('log_%s_%s.txt',username,datetime('now','TimeZone','local','Format','yyyyMMdd'));
+    fpath_diary = joinPath(save_dir,fname_log);
+    diary(fpath_diary);
+end
 
 %% Read image and ancillary data and format them for processing
 TRRIFdata.load_basenamesCDR();
@@ -677,7 +722,7 @@ if isempty(img_cube)
             Yif = TRRRAIFdata.readimgi();
 
         case {'TRRY','TRRB','TRRC','TRRD'}
-            d_IoF = joinPath(dir_yuk, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
+            d_IoF = joinPath(dir_TRRX, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
             TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
             Yif = TRRYIFdata.readimgi();
 
@@ -995,7 +1040,16 @@ switch upper(PROC_MODE)
             if strcmpi(precision,'single')
                 Alib = single(Alib); Aicelib = single(Aicelib);
             end
+            if verLessThan('matlab','9.4')
+                [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,Xt_c,Xlib_c,Xice_c,vldpxl_c]...
+                    = sabcondc_v3l1_pub_R2017b(Alib,logYif(:,:,c),WAb(:,c),logT_extrap(:,:,c),GP(:,:,c),...
+                          'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
+                          'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                          'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                          'Aicelib',Aicelib,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
+                          'THRESHOLD_BADSPC',th_badspc);
 
+            else
             [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,Xt_c,Xlib_c,Xice_c,vldpxl_c]...
                 = sabcondc_v3l1_pub(Alib,logYif(:,:,c),WAb(:,c),logT_extrap(:,:,c),GP(:,:,c),...
                   'LAMBDA_A',lambda_a,'NITER',nIter,'PRECISION',precision,'GPU',gpu,...
@@ -1003,6 +1057,7 @@ switch upper(PROC_MODE)
                   'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
                   'Aicelib',Aicelib,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
                   'THRESHOLD_BADSPC',th_badspc);
+            end
 
             Yif_cor(lBool,c,bBool) = reshape(logYifc_cor',[nL,1,nB]);
             Yif_cor_ori(lBool,c,bBool) = reshape(logYifc_cor_ori',[nL,1,nB]);
@@ -1103,6 +1158,19 @@ switch upper(PROC_MODE)
             
             switch weight_mode
                 case 0
+                    if verLessThan('matlab','9.4')
+                        [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
+                        AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
+                        Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns)]...
+                            = sabcondc_v3l1_gpu_batch_tagv1_R2017b(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
+                                  logT_extrap(:,:,Columns),...
+                                  BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
+                                  'Aicelib',Aicelibs,'nIter',nIter,...
+                                  'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
+                                  'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
+                                  'gpu',gpu,'WEIGHT_MODE',weight_mode,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
+                                  'THRESHOLD_BADSPC',th_badspc);
+                    else
                     [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
                         AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
                         Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns)]...
@@ -1114,7 +1182,11 @@ switch upper(PROC_MODE)
                               'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
                               'gpu',gpu,'WEIGHT_MODE',weight_mode,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
                               'THRESHOLD_BADSPC',th_badspc);
+                    end
                 case 1
+                    if verLessThan('matlab','9.4')
+                        error('This version of MATLAB is not supported for Weight mode=2. Update at least to R2018a');
+                    end
                     switch upper(PROC_MODE)
                          case {'CPU_4','GPU_4','GPU_BATCH_4'}
                              [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),mc(bBool,1,Columns),...
@@ -1277,10 +1349,11 @@ fprintf('Processing time is %s\n',tend-tstart);
 % save results
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Write a setting file.
-fname = [basename_cr '_settings.txt'];
+fname_setting = [basename_cr '_settings.txt'];
 if save_file
     fprintf('Now saving...\n');
-    fid = fopen(joinPath(save_dir,fname),'w');
+    setting_file_path = joinPath(save_dir,fname_setting);
+    fid = fopen(setting_file_path,'w');
 else
     fid = 1; % standard output
 end
@@ -1307,7 +1380,7 @@ fprintf(fid,'CROP_BANDS: %d\n',do_crop_bands);
 fprintf(fid,'OPT_IMG: %s\n',opt_img);
 fprintf(fid,'IMG_CUBE is empty: %s',img_cube_isempty);
 fprintf(fid,'IMG_CUBE_BAND_INVERSE: %d',img_cube_band_inverse);
-fprintf(fid,'TRRY_PDIR: %s\n',dir_yuk);
+fprintf(fid,'TRRY_PDIR: %s\n',dir_TRRX);
 fprintf(fid,'FFC_IF_COUNTER: %d\n',ffc_counter);
 fprintf(fid,'OBS_COUNTER: %d\n', obs_counter);
 fprintf(fid,'OBS_COUNTER_DF: %d\n', obs_counter_df);
@@ -1372,6 +1445,7 @@ fprintf(fid,'DEBUG: %d\n',is_debug);
 
 if fid>1
     fclose(fid);
+    chmod777(setting_file_path,verbose);
 end
 
 %% dump to settings
@@ -1395,7 +1469,7 @@ settings.crop_bands = do_crop_bands;
 settings.opt_img = opt_img;
 settings.img_cube_isempty = img_cube_isempty;
 settings.img_cube_band_inverse = img_cube_band_inverse;
-settings.trry_pdir = dir_yuk;
+settings.trry_pdir = dir_TRRX;
 settings.ffc_if_counter = ffc_counter;
 settings.obs_counter = obs_counter;
 settings.obs_counter_df = obs_counter_df;
@@ -1517,63 +1591,72 @@ end
 if save_file
     switch upper(storage_saving_level)
         case 'NORMAL'
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.hdr']));
-            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_cr '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr '.img']));
-            envidatawrite(single(Yif_cor),joinPath(save_dir,[basename_cr '.img']),hdr_cr);
-            fprintf('Done\n');
-
+            save_output_img(single(Yif_cor),hdr_cr,basename_cr,save_dir,verbose);
+            % fpath_hdr = joinPath(save_dir, [basename_cr '.hdr']);
+            % fprintf('Saving %s ...\n',fpath_hdr);
+            % envihdrwritex(hdr_cr,fpath_hdr,'OPT_CMOUT',false);
+            % chmod777(fpath_hdr,verbose);
+            % fprintf('Done\n');
+            % fpath_img = joinPath(save_dir, [basename_cr '.img']);
+            % fprintf('Saving %s ...\n',fpath_img);
+            % envidatawrite(single(Yif_cor),fpath_img,hdr_cr);
+            % chmod777(fpath_img,verbose);
+            % fprintf('Done\n');
+            
             basename_ori = [basename_cr '_ori'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.hdr']));
-            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_ori '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
-            envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yif_cor_ori),hdr_cr,basename_ori,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.hdr']));
+            % envihdrwritex(hdr_cr,joinPath(save_dir,[basename_ori '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_ori '.img']));
+            % envidatawrite(single(Yif_cor_ori),joinPath(save_dir,[basename_ori '.img']),hdr_cr);
+            % fprintf('Done\n');
 
-            fname_supple = joinPath(save_dir,[basename_cr '.mat']);
+            fpath_supple = joinPath(save_dir,[basename_cr '.mat']);
             wa = squeeze(wa)';
-            fprintf('Saving %s ...\n',fname_supple);
+            fprintf('Saving %s ...\n',fpath_supple);
 
             switch upper(PROC_MODE)
                 case {'CPU_3','GPU_3','GPU_BATCH_3'}
-                    save(fname_supple,'wa','bands','line_idxes','mc','BP','GP','bp_est_bools',...
+                    save(fpath_supple,'wa','bands','line_idxes','mc','BP','GP','bp_est_bools',...
                         'ancillaries','Valid_pixels','settings');
                 case {'CPU_4','GPU_4','GPU_BATCH_4'}
-                    save(fname_supple,'wa','bands','line_idxes','T_est','mc','BP','GP','bp_est_bools',...
+                    save(fpath_supple,'wa','bands','line_idxes','T_est','mc','BP','GP','bp_est_bools',...
                         'ancillaries','Valid_pixels','settings');
                 otherwise
-                    save(fname_supple,'wa','bands','line_idxes','T_est','BP','GP','bp_est_bools',...
+                    save(fpath_supple,'wa','bands','line_idxes','T_est','BP','GP','bp_est_bools',...
                         'ancillaries','Valid_pixels','settings');
             end
-
+            chmod777(fpath_supple,verbose);
             fprintf('Done\n');
 
             basename_Bg = [basename_cr '_Bg'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
-            envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.img']));
-            envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Bg_est),hdr_cr,basename_Bg,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.hdr']));
+            % envihdrwritex(hdr_cr,joinPath(save_dir,[basename_Bg '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg '.img']));
+            % envidatawrite(single(Bg_est),joinPath(save_dir, [basename_Bg '.img']),hdr_cr);
+            % fprintf('Done\n');
 
             basename_AB = [basename_cr '_AB'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
-            envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
-            envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(AB_est),hdr_cr,basename_AB,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.hdr']));
+            % envihdrwritex(hdr_cr,joinPath(save_dir, [basename_AB '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB '.img']));
+            % envidatawrite(single(AB_est),joinPath(save_dir, [basename_AB '.img']),hdr_cr);
+            % fprintf('Done\n');
 
             if ~isempty(opticelib)
                 basename_Ice = [basename_cr '_Ice'];
-                fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.hdr']));
-                envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
-                fprintf('Done\n');
-                fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
-                envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
-                fprintf('Done\n');
+                save_output_img(single(Ice_est),hdr_cr,basename_Ice,save_dir,verbose);
+                % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.hdr']));
+                % envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
+                % fprintf('Done\n');
+                % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
+                % envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
+                % fprintf('Done\n');
             end
             
             % Nan Replaced data (nr)
@@ -1582,40 +1665,44 @@ if save_file
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
             hdr_cr_nr.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
             hdr_cr_nr.cat_history = [hdr_cr_nr.cat_history '_nr'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.hdr']));
-            envihdrwritex(hdr_cr_nr,joinPath(save_dir,[basename_cr_nr '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
-            envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yif_cor_nr),hdr_cr_nr,basename_cr_nr,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.hdr']));
+            % envihdrwritex(hdr_cr_nr,joinPath(save_dir,[basename_cr_nr '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_cr_nr '.img']));
+            % envidatawrite(single(Yif_cor_nr),joinPath(save_dir,[basename_cr_nr '.img']),hdr_cr);
+            % fprintf('Done\n');
 
             basename_nr_ds = [basename_cr_nr '_ds'];
             hdr_nr_ds = hdr_cr_nr;
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
             hdr_nr_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
             hdr_nr_ds.cat_history = [hdr_cr_nr.cat_history '_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
-            envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yif_nr_ds),hdr_nr_ds,basename_nr_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
+            % envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
             
             basename_Bg_ds = [basename_Bg '_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_Bg_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.img']));
-            envidatawrite(single(Bg_est_ds),joinPath(save_dir, [basename_Bg_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Bg_est_ds),hdr_nr_ds,basename_Bg_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_Bg_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Bg_ds '.img']));
+            % envidatawrite(single(Bg_est_ds),joinPath(save_dir, [basename_Bg_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
 
             basename_AB_ds = [basename_AB '_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir, [basename_AB_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.img']));
-            envidatawrite(single(AB_est_ds),joinPath(save_dir, [basename_AB_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(AB_est_ds),hdr_nr_ds,basename_AB_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir, [basename_AB_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_AB_ds '.img']));
+            % envidatawrite(single(AB_est_ds),joinPath(save_dir, [basename_AB_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
             
         case 'HIGHEST'
             % With STORAGE_SAVING_LEVEL=HIGHEST, only desmiled nan replaced
@@ -1625,24 +1712,26 @@ if save_file
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
             hdr_nr_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
             hdr_nr_ds.cat_history = [hdr_cr.cat_history '_nr_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
-            envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yif_nr_ds),hdr_nr_ds,basename_nr_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_nr_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_nr_ds '.img']));
+            % envidatawrite(single(Yif_nr_ds),joinPath(save_dir,[basename_nr_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
             
             basename_mdl_ds = [basename_cr '_mdl_ds'];
             hdr_mdl_ds = hdr_cr;
             dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
             hdr_mdl_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
             hdr_mdl_ds.cat_history = [hdr_cr.cat_history '_mdl_ds'];
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.hdr']));
-            envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_mdl_ds '.hdr']),'OPT_CMOUT',false);
-            fprintf('Done\n');
-            fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.img']));
-            envidatawrite(single(Yifmdl_ds),joinPath(save_dir, [basename_mdl_ds '.img']),hdr_cr);
-            fprintf('Done\n');
+            save_output_img(single(Yifmdl_ds),hdr_mdl_ds,basename_mdl_ds,save_dir,verbose);
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.hdr']));
+            % envihdrwritex(hdr_nr_ds,joinPath(save_dir,[basename_mdl_ds '.hdr']),'OPT_CMOUT',false);
+            % fprintf('Done\n');
+            % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_mdl_ds '.img']));
+            % envidatawrite(single(Yifmdl_ds),joinPath(save_dir, [basename_mdl_ds '.img']),hdr_cr);
+            % fprintf('Done\n');
     end
 end
 
@@ -1676,7 +1765,14 @@ end
 
 fprintf('Process completed!\n');
 
-if save_file, diary off; end
+if save_file
+    diary off;
+    chmod777(fpath_diary,verbose);
+    % if isunix
+    %     system(['chmod 777 ' fpath_diary]);
+    %     if verbose, fprintf('"%s": permission is set to 777.\n',fpath_diary); end
+    % end
+end
 
 %% Construct output
 out = [];
@@ -1783,3 +1879,17 @@ end
 
 
 end
+
+function save_output_img(img,hdr,basename,save_dir,verbose)
+fpath_hdr = joinPath(save_dir, [basename '.hdr']);
+fprintf('Saving %s ...\n',fpath_hdr);
+envihdrwritex(hdr,fpath_hdr,'OPT_CMOUT',false);
+chmod777(fpath_hdr,verbose);
+fprintf('Done\n');
+fpath_img = joinPath(save_dir, [basename '.img']);
+fprintf('Saving %s ...\n',fpath_img);
+envidatawrite(img,fpath_img,hdr);
+chmod777(fpath_img,verbose);
+fprintf('Done\n');
+end
+
