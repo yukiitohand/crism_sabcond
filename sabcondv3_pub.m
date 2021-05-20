@@ -150,7 +150,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'BANDS_OPT' : integer, {4}
 %       an option for wavelength channels to use. This is the 
-%       input for genBands()
+%       input for crmsab_genBands()
 %       (default) 4
 %   'LINES': array
 %       array, defining lines to be used for processing. If empty, then all
@@ -465,7 +465,7 @@ switch upper(storage_saving_level)
         do_crop_bands = true;
 end
 
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 % libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
 

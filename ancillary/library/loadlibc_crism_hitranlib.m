@@ -32,7 +32,7 @@ if ~overwrite && exist(Alibcachefilepath,'file')
 else
     [Ahitranlib,infoAhitranlib] = wrapper_crism_hitranlib(opt,wabasename,c);
     % select the band option
-    bands = genBands(bands_opt);
+    crmsab_bands = crmsab_genBands(bands_opt);
     Ahitranlib = Ahitranlib(bands,:); 
     % prun if there is any invalid one
     valid_idx = ~any(isnan(Ahitranlib),1);

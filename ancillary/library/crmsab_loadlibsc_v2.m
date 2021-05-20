@@ -22,7 +22,7 @@ optUSGSsplib = optLibs(3);
 optCRISMTypeLib = optLibs(4);
 optInterp = crmsab_const_liboptInterp(optInterpid);
 libprefix = crmsab_const_libprefix(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib);
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 
 
 Alibdir = joinPath(localCRISM_PDSrootDir,'cache/WA/',wabasename);

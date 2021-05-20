@@ -82,7 +82,7 @@ fprintf('gauss_sigma:%f\n',gausssigma);
 fprintf('opt_img: %s\n',opt_img);
 fprintf('optBP: %s\n',optBP);
 
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 
 fprintf('Current directory:%s\n',pwd);

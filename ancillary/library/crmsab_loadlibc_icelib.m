@@ -32,7 +32,7 @@ if ~overwrite && exist(Alibcachefilepath,'file')
 else
     [Aicelib,infoAicelib] = wrapper_crism_icelib(opt,wabasename,c);
     % select the band option
-    bands = genBands(bands_opt);
+    bands = crmsab_genBands(bands_opt);
     Aicelib= Aicelib(bands,:) ; 
     % prun if there is any invalid one
     valid_idx = ~any(isnan(Aicelib),1);

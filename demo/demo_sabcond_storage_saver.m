@@ -67,7 +67,7 @@ additional_suffix = '';
 bands_opt    = 4;
 % integer
 % Magic number for wavelength channels to be used. This is the input for 
-% [bands] = genBands(bands_opt)
+% [bands] = crmsab_genBands(bands_opt)
 
 %%
 % -------------------------------------------------------------------------
