@@ -1,5 +1,5 @@
-function [ bands ] = genBands( bands_opt )
-% [ bands ] = genBands( bands_opt )
+function [ bands ] = crmsab_genBands( bands_opt )
+% [ bands ] = crmsab_genBands( bands_opt )
 %   generate "bands" used for processing from its option ID.
 
 switch bands_opt

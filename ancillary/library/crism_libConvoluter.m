@@ -5,8 +5,8 @@ function [] = crism_libConvoluter(libname,opt,varargin)
 %     pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/')
 % filename is defined by
 %     pdir_cache2 = joinPath(pdir_cache,wabasename);
-%     [masterbase] = const_masterbase(libname,opt,wabasename,method,retainRatio);
-%     [cachefilepath] = const_libcachefilepath(pdir_cache2,masterbase,c);
+%     [masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio);
+%     [cachefilepath] = crmsab_const_libcachefilepath(pdir_cache2,masterbase,c);
 % See those files for details
 %   
 %   Input Parameters
@@ -203,7 +203,7 @@ for i=1:length(WAbasenameList)
     if ~exist(pdir_cache2,'dir')
         mkdir(pdir_cache2);
     end
-    [masterbase] = const_masterbase(libname,opt,wabasename,method,retainRatio);
+    [masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio);
     fprintf('Starting %s, current time: %s\n',wabasename,datetime());
     if isempty(cList)
         cList = 1:WAdata.hdr.samples;
@@ -216,7 +216,7 @@ for i=1:length(WAbasenameList)
         if ~all(isnan(wvc))
             tc = tic;
             sbc = squeeze(imgsb(:,c,:))';
-            [cachefilepath] = const_libcachefilepath(pdir_cache2,masterbase,c);
+            [cachefilepath] = crmsab_const_libcachefilepath(pdir_cache2,masterbase,c);
             
             if ~overwrite && exist(cachefilepath,'file')
                 fprintf('Skipping %s\n',cachefilepath);

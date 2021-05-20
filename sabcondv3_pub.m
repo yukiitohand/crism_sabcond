@@ -158,7 +158,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %  ## GENERAL SABCOND OPTIONS #--------------------------------------------
 %   'BANDS_OPT' : integer, {4}
 %       an option for wavelength channels to use. This is the 
-%       input for genBands()
+%       input for crmsab_genBands()
 %       (default) 4
 %   'LINES': array
 %       array, defining lines to be used for processing. If empty, then all
@@ -509,9 +509,9 @@ switch upper(storage_saving_level)
         do_crop_bands = true;
 end
 
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
-% libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
+% libprefix = crmsab_const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
 
 switch upper(PROC_MODE)
     case {'CPU_1','CPU_2','CPU_3','CPU_4'}
@@ -640,7 +640,7 @@ if save_file
     end
 end
 
-suffix = const_suffix_v3(mt,additional_suffix);
+suffix = crmsab_const_suffix_v3(mt,additional_suffix);
 
 fprintf('suffix will be \n"%s"\n',suffix);
 
@@ -1016,22 +1016,22 @@ switch upper(PROC_MODE)
         for c = Columns_valid
             tic;
             if Alib_out
-                [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
+                [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
                 bands_opt,WAb(:,c),cntRmvl);
                 ancillaries(c).Alib = Alib;
                 ancillaries(c).infoAlib = infoAall(valid_idx);
             else
-                [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
+                [Alib] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,...
                 bands_opt,WAb(:,c),cntRmvl);
             end
             if ~isempty(opticelib)
                 if Alib_out
-                    [Aicelib,infoAiceall,valid_idx_ice] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
+                    [Aicelib,infoAiceall,valid_idx_ice] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
                         bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                     ancillaries(c).Aicelib = Aicelib;
                     ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
                 else
-                    [Aicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,...
+                    [Aicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
                         bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                 end
             else
@@ -1119,25 +1119,25 @@ switch upper(PROC_MODE)
             for i = 1:length(Columns)
                 c = Columns(i);
                 if Alib_out && (ni==1) && (i==1)
-                    [Alib,infoAall,valid_idx] = loadlibsc_v2(...
+                    [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(...
                         optLibs,basenameWA,optInterpid,c,...
                         bands_opt,WAb(:,c),cntRmvl);
                     ancillaries(c).Alib     = Alib;
                     ancillaries(c).infoAlib = infoAall(valid_idx);
                 else
-                    [Alib] = loadlibsc_v2(...
+                    [Alib] = crmsab_loadlibsc_v2(...
                         optLibs,basenameWA,optInterpid,c,...
                         bands_opt,WAb(:,c),cntRmvl);
                 end
                 if ~isempty(opticelib)
                     if Alib_out
                         [Aicelib,infoAiceall,valid_idx_ice]...
-                            = loadlibc_crism_icelib(opticelib,basenameWA,c,...
+                            = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
                             bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                         ancillaries(c).Aicelib     = Aicelib;
                         ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
                     else
-                        [Aicelib] = loadlibc_crism_icelib(...
+                        [Aicelib] = crmsab_loadlibc_icelib(...
                             opticelib,basenameWA,c,...
                             bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                     end

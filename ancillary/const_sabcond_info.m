@@ -113,7 +113,7 @@ switch suffix_version
 end
 [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib] = decompose_libprefix(libprefix);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
-libprefix_Alib = const_libprefix(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib);
+libprefix_Alib = crmsab_const_libprefix(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib);
 if isempty(opticelib)
     cntRmvl_ice = '';
 end

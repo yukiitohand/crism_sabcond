@@ -16,7 +16,7 @@ else
     end
 end
 
-% bands = genBands(bands_opt);
+% bands = crmsab_genBands(bands_opt);
 
 % crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L');
 % crism_obs.load_data(crism_obs.info.basenameIF,crism_obs.info.dir_trdr,'if');

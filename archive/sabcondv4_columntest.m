@@ -81,7 +81,7 @@ fprintf('gauss_sigma:%f\n',gausssigma);
 fprintf('opt_img: %s\n',opt_img);
 fprintf('optBP: %s\n',optBP);
 
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 
 fprintf('Current directory:%s\n',pwd);
@@ -370,9 +370,9 @@ for ci=1:nCLength
         end
         tic;
 
-        [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
 
-        [Aicelib,infoAicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
+        [Aicelib,infoAicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
 
         
         [ logt_est,logYifc_cor,logAB,logBg,logIce,logYifc_cor_ori,logYifc_isnan,ancillary,rr_ori_c,vldpxl_c]...

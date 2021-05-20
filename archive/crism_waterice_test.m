@@ -73,7 +73,7 @@ fprintf('opt_img: %s\n',opt_img);
 fprintf('optBP: %s\n',optBP);
 fprintf('opt_icelib: %d\n',opticelib);
 
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 %libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,'','');
 libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
@@ -351,8 +351,8 @@ for c = 1:50:nCall
         end
         tic;
 
-        [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
-        [Aicelib,infoAicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
+        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        [Aicelib,infoAicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
 
         [ water_ice_existc,Xice1_mean_insig, Xice1, idx_insig,ancillary]...
             = sabcondc_v4l1_b_icetest(Alib,Aicelib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...

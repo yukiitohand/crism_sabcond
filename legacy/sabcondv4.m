@@ -110,7 +110,7 @@ fprintf('opt_img: %s\n',opt_img);
 fprintf('optBP: %s\n',optBP);
 fprintf('opt_icelib: %d\n',opticelib);
 
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 %libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,'','');
 libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
@@ -479,8 +479,8 @@ for c = 1:nCall
 %         tc = tic;
         % load library
 %         nIter = 1000;
-        [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
-        [Aicelib,infoAicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
+        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        [Aicelib,infoAicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
 %         [Ahitranlib,infoAhitranlib] = loadlibc_crism_hitranlib(opthitranlib,basenameWA,c,bands_opt,WA(:,c),'CNTRMVL',0,'overwrite',1);
 %         infoAlib = infoAall(valid_idx);
 %         [ logt_est,logYifc_cor,logAB,logBg,ancillary]...

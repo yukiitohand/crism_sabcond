@@ -103,7 +103,7 @@ fprintf('gauss_sigma:%f\n',gausssigma);
 fprintf('opt_img: %s\n',opt_img);
 fprintf('optBP: %s\n',optBP);
 
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,'','');
 % libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,opthitranlib);
@@ -375,7 +375,7 @@ end
 
 
 %% Library customization
-[Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,floor(nCall/2),bands_opt,WA(:,floor(nCall/2)),cntRmvl);
+[Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,floor(nCall/2),bands_opt,WA(:,floor(nCall/2)),cntRmvl);
 switch Lib_Modify
     case '0'
         mag_factors = ones(1,length(infoAall));
@@ -516,7 +516,7 @@ for c = 1:nCall
         end
         tic;
         % load library
-        [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
         mag_factors_Alib = mag_factors(valid_idx);
         exclude_lib_idx_bool_Alib = exclude_lib_idx_all_bool(valid_idx);
         Alib2 = Alib.*mag_factors_Alib;

@@ -122,7 +122,7 @@ fprintf('gauss_sigma:%f\n',gausssigma);
 fprintf('opt_img: %s\n',opt_img);
 fprintf('optBP: %s\n',optBP);
 
-bands = genBands(bands_opt);
+bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,'','');
 % libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,opthitranlib);
@@ -527,7 +527,7 @@ for ni = 1:n_batch
     end
     for i = 1:length(cList)
         c = cList(i);
-        [Alib] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        [Alib] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
         NA = size(Alib,2);
         if i==1
             Alibs = Alib;
