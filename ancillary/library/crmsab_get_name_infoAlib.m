@@ -1,4 +1,4 @@
-function [names] = get_name_infoAlib(infoA)
+function [names] = crmsab_get_name_infoAlib(infoA)
     names = cell(1,length(infoA));
     for i=1:length(infoA)
         switch infoA(i).spclib
