@@ -1,4 +1,4 @@
-function [masterbase] = const_masterbase(libname,opt,wabasename,method,retainRatio)
+function [masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio)
 switch method
     case 'interp1'
         masterbase = sprintf('%s%d_%s_%s',libname,opt,wabasename,method);

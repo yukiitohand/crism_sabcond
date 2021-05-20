@@ -1,4 +1,4 @@
-function [ Alib,infoAall,valid_idx,Aall ] = loadlibsc_v2(optLibs,wabasename,optInterpid,c,bands_opt,wvc,cntRmvl,varargin)
+function [ Alib,infoAall,valid_idx,Aall ] = crmsab_loadlibsc_v2(optLibs,wabasename,optInterpid,c,bands_opt,wvc,cntRmvl,varargin)
 global crism_env_vars
 localCRISM_PDSrootDir = crism_env_vars.localCRISM_PDSrootDir;
 %%
@@ -11,8 +11,7 @@ else
             case 'OVERWRITE'
                 overwrite = varargin{i+1};
             otherwise
-                % Hmmm, something wrong with the parameter string
-                error(['Unrecognized option: ''' varargin{i} '''']);
+                error('Unrecognized option: %s', varargin{i});
         end
     end
 end

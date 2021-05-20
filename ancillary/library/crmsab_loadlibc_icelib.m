@@ -1,4 +1,4 @@
-function [Aicelib,infoAicelib,valid_idx] = loadlibc_crism_icelib(opt,wabasename,c,bands_opt,wvc,varargin)
+function [Aicelib,infoAicelib,valid_idx] = crmsab_loadlibc_icelib(opt,wabasename,c,bands_opt,wvc,varargin)
 
 global crism_env_vars
 localCRISM_PDSrootDir = crism_env_vars.localCRISM_PDSrootDir;
@@ -15,8 +15,7 @@ else
             case 'OVERWRITE'
                 overwrite = varargin{i+1};
             otherwise
-                % Hmmm, something wrong with the parameter string
-                error(['Unrecognized option: ''' varargin{i} '''']);
+                error('Unrecognized option: %s', varargin{i});
         end
     end
 end
