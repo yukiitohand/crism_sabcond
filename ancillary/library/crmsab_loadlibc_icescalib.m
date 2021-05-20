@@ -1,4 +1,4 @@
-function [Aicescalib,infoAicescalib,valid_idx] = loadlibc_crism_icescalib(opt,wabasename,c,bands_opt,wvc,varargin)
+function [Aicescalib,infoAicescalib,valid_idx] = crmsab_loadlibc_icescalib(opt,wabasename,c,bands_opt,wvc,varargin)
 
 global localCRISM_PDSrootDir
 
