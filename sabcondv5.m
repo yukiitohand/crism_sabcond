@@ -587,7 +587,7 @@ for c=cList
         end
         
         tic
-        [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
 
         [ logt_est,logYifc_cor,logAB,logBg,logYifc_cor_ori,logYifc_isnan,ancillary,rr_ori_c,vldpxl_c,res_exp,std_expected_scaled]...
             = sabcondc_v5l1_med(Alib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...

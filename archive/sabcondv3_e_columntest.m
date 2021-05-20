@@ -254,7 +254,7 @@ switch optBP
 end
 
 %% Library customization
-[Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,floor(cList(1)),bands_opt,WA(:,floor(cList(1))),cntRmvl);
+[Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,floor(cList(1)),bands_opt,WA(:,floor(cList(1))),cntRmvl);
 switch Lib_Modify
     case '0'
         mag_factors = ones(1,length(infoAall));
@@ -404,7 +404,7 @@ for ci=1:nCLength
         end
         tic;
 
-        [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
         mag_factors_Alib = mag_factors(valid_idx);
         exclude_lib_idx_bool_Alib = exclude_lib_idx_all_bool(valid_idx);
         Alib2 = Alib.*mag_factors_Alib;

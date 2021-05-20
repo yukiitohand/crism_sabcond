@@ -370,7 +370,7 @@ switch optBP
 end
 
 %% Library customization
-[Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,floor(nCall/2),bands_opt,WA(:,floor(nCall/2)),cntRmvl);
+[Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,floor(nCall/2),bands_opt,WA(:,floor(nCall/2)),cntRmvl);
 switch Lib_Modify
     case '0'
         mag_factors = ones(1,length(infoAall));
@@ -508,7 +508,7 @@ for c = 1:nCall
 %         tc = tic;
         % load library
 %         nIter = 1000;
-        [Alib,infoAall,valid_idx] = loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
+        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
 %         infoA = infoAall(valid_idx);
 %         [kieserite,k_i] = searchby_multfield({'name','spc_name'},{'kieserite','crism_typespec_mono_hyd_sulf'},infoA);
 %         [pyrox,pyrox_i] = searchby_multfield({'name','spc_name'},{'pyroxene'},infoA);
