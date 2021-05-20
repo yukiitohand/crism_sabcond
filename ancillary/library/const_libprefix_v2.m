@@ -1,4 +1,4 @@
-function libprefix = const_libprefix(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,opthitranlib)
+function libprefix = crmsab_const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,opthitranlib)
 
 libprefix = sprintf('Lib%d%d%d%d%d%d',optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,opthitranlib);
 

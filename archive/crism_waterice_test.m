@@ -352,7 +352,7 @@ for c = 1:50:nCall
         tic;
 
         [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
-        [Aicelib,infoAicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
+        [Aicelib,infoAicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',0,'CNTRMVL',0);
 
         [ water_ice_existc,Xice1_mean_insig, Xice1, idx_insig,ancillary]...
             = sabcondc_v4l1_b_icetest(Alib,Aicelib,logYif(:,:,c),WA(:,c),logtc,'GP',GP(:,:,c),...

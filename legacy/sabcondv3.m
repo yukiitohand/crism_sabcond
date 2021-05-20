@@ -469,7 +469,7 @@ for c = 1:nCall
         % load library
 %         nIter = 1000;
         [Alib,~,~] = crmsab_loadlibsc_v2(optLibs,basenameWA,optInterpid,c,bands_opt,WA(:,c),cntRmvl);
-%         [Aicelib,infoAicelib] = loadlibc_crism_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',1,'CNTRMVL',1);
+%         [Aicelib,infoAicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,bands_opt,WA(:,c),'overwrite',1,'CNTRMVL',1);
 %         [Ahitranlib,infoAhitranlib] = loadlibc_crism_hitranlib(opthitranlib,basenameWA,c,bands_opt,WA(:,c),'CNTRMVL',0,'overwrite',1);
 %         infoAlib = infoAall(valid_idx);
 %         [ logt_est,logYifc_cor,logAB,logBg,ancillary]...

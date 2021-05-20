@@ -21,7 +21,7 @@ else
 end
 
 Alibdir = joinPath(localCRISM_PDSrootDir,'cache/WA/',wabasename);
-Alibcachefname = constAicelibcachefname(wabasename,opt,bands_opt,c,cntRmvl);
+Alibcachefname = crmsab_constAicelibcachefname(wabasename,opt,bands_opt,c,cntRmvl);
 Alibcachefilepath = joinPath(Alibdir,Alibcachefname);
 % Alibcachefilepath = joinPath(Alibdir,sprintf('Alib%s_%s_interp%s_b%s_c%03d.mat',libprefix,wabasename,optInterpid,bands_opt,c));
 if ~overwrite && exist(Alibcachefilepath,'file')

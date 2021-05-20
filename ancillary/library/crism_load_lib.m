@@ -4,8 +4,8 @@ function [Alib,infoA,option] = crism_load_lib(libname,opt,wabasename,c,varargin)
 %     pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/')
 % filename is defined by
 %     pdir_cache2 = joinPath(pdir_cache,wabasename);
-%     [masterbase] = const_masterbase(libname,opt,wabasename,method,retainRatio);
-%     [cachefilepath] = const_libcachefilepath(pdir_cache2,masterbase,c);
+%     [masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio);
+%     [cachefilepath] = crmsab_const_libcachefilepath(pdir_cache2,masterbase,c);
 % See those files for details
 %   
 %   Input Parameters
@@ -79,8 +79,8 @@ end
 
 pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/');
 pdir_cache2 = joinPath(pdir_cache,wabasename);
-[masterbase] = const_masterbase(libname,opt,wabasename,method,retainRatio);
-[cachefilepath] = const_libcachefilepath(pdir_cache2,masterbase,c);
+[masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio);
+[cachefilepath] = crmsab_const_libcachefilepath(pdir_cache2,masterbase,c);
 
 switch libname
     case 'CRISMspclib'

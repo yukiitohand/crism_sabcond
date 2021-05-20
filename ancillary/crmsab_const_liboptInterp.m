@@ -1,4 +1,4 @@
-function optInterp = const_optInterp(optInterpid)
+function optInterp = crmsab_const_liboptInterp(optInterpid)
 
 switch optInterpid
     case 1
