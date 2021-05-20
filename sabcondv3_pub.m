@@ -467,7 +467,7 @@ end
 
 bands = crmsab_genBands(bands_opt);
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
-% libprefix = const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
+% libprefix = crmsab_const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
 
 switch upper(PROC_MODE)
     case {'CPU_1','CPU_2','CPU_3','CPU_4'}
@@ -554,7 +554,7 @@ if save_file
     end
 end
 
-suffix = const_suffix_v3(mt,additional_suffix);
+suffix = crmsab_const_suffix_v3(mt,additional_suffix);
 
 fprintf('suffix will be \n"%s"\n',suffix);
 
