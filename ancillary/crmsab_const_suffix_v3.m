@@ -1,4 +1,4 @@
-function [suffix] = const_suffix_v3(mt,additional_suffix)
+function [suffix] = crmsab_const_suffix_v3(mt,additional_suffix)
 
 
 if isempty(additional_suffix)
