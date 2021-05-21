@@ -1,4 +1,4 @@
-function [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib] = decompose_libprefix(libprefix)
+function [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib] = crmsab_decompose_libprefix(libprefix)
 
 switch length(libprefix)
     case 7

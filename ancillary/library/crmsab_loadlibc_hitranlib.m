@@ -1,4 +1,4 @@
-function [Ahitranlib,infoAhitranlib,valid_idx] = loadlibc_crism_hitranlib(opt,wabasename,c,bands_opt,wvc,varargin)
+function [Ahitranlib,infoAhitranlib,valid_idx] = crmsab_loadlibc_hitranlib(opt,wabasename,c,bands_opt,wvc,varargin)
 
 global localCRISM_PDSrootDir
 

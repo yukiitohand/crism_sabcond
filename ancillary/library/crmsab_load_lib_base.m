@@ -1,4 +1,4 @@
-function [Alib,infoA,option] = crism_load_lib(libname,opt,wabasename,c,varargin)
+function [Alib,infoA,option] = crmsab_load_lib_base(libname,opt,wabasename,c,varargin)
 % Load spectral librrary convolved to CRISM wavelength channels
 % The output file is stored in 
 %     pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/')
