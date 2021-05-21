@@ -172,17 +172,29 @@ end
 % setups.retainRatio = retainRatio;
 dir_cacheWA = joinPath(dir_cache, 'WA/');
 
-% It is not yet implmented how to eliminate duplicated WA files.
-% Probably needs some processing here when searching WA
+
 
 if isempty(wabasename)
     [ propWAptr ] = crism_create_propCDR4basename( 'Acro','WA','BINNING',binning,'SENSOR_ID',sensor_id,'Version',vr);
-    [WAbasenameList,~] = getCDRbasenames_v2(propWAptr);
-else
-    if ischar(wabasename)
-        WAbasenameList = {wabasename};
-    elseif iscell(wabasename)
-        WAbasenameList = wabasename;
+    [~,wabasename,~] = crism_search_cdr_fromProp(propWAptr);
+    if isempty(wabasename)
+        error('No matching WA file is found');
+    end
+end
+
+
+if ischar(wabasename)
+    WAbasenameList = {wabasename};
+elseif iscell(wabasename)
+    % Eliminate duplicated WA files.
+    WAbasenameList = []; wa_identfr_list = [];
+    for i=1:length(wabasename)
+        wabasename_i = wabasename{i};
+        wa_identfr_i = crmsab_get_libWAIdentifier(wabasename_i);
+        if ~any(strcmpi(wa_identfr_i,wa_identfr_list))
+            WAbasenameList  = [WAbasenameList {wabasename_i}];
+            wa_identfr_list = [wa_identfr_list {wa_identfr_i}];
+        end
     end
 end
 
