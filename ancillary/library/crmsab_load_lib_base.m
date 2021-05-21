@@ -42,7 +42,7 @@ function [Alib,infoA,option] = crmsab_load_lib_base(libname,opt,wabasename,c,var
 %   crism_libConvoluter('CRISMTypeLib',2,'METHOD','interp1','WV_BIN','3');
 
 global crism_env_vars
-localCRISM_PDSrootDir = crism_env_vars.localCRISM_PDSrootDir;
+dir_cache = crism_env_vars.dir_CACHE;
 
 if nargin<4
     fprintf('Usage: [Alib,infoA,option] = crism_load_lib(libname,opt,wabasename,c,varargin)\n');
@@ -61,6 +61,8 @@ else
                 method = varargin{i+1};
             case 'RETAINRATIO'
                 retainRatio = varargin{i+1};
+            case 'DIR_CACHE'
+                dir_cache = varargin{i+1};
             otherwise
                 % Hmmm, something wrong with the parameter string
                 error(['Unrecognized option: ''' varargin{i} '''']);
@@ -77,10 +79,9 @@ switch method
         error('method %s is not valid. Choose "interpCRISMspc" or "interp1" (case sensitive).',method);
 end
 
-pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/');
-pdir_cache2 = joinPath(pdir_cache,wabasename);
+dir_cacheWA = joinPath(dir_cache,'WA',wabasename);
 [masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio);
-[cachefilepath] = crmsab_const_libcachefilepath(pdir_cache2,masterbase,c);
+[cachefilepath] = crmsab_const_libcachefilepath(dir_cacheWA,masterbase,c);
 
 switch libname
     case 'CRISMspclib'
