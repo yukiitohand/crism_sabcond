@@ -1,5 +1,5 @@
-function [ trans_spcs ] = load_T_sclk_closest( sclk,varargin )
-% [ trans_spcs ] = load_T_sclk_closest( sclk,varargin )
+function [ trans_spcs ] = crmsab_load_T_sclk_closest( sclk,varargin )
+% [ trans_spcs ] = crmsab_load_T_sclk_closest( sclk,varargin )
 % transmission is loaded based on the closest in terms of the input sclk.
 % The transmission files to be read
 % Optional parameters
@@ -40,7 +40,7 @@ end
 
 %% select the closest FFC
 
-[ dirname_ffc,dirname_ffc_mcb,dirname_ffc_mca ] = select_closestFFC(sclk);
+[ dirname_ffc,dirname_ffc_mcb,dirname_ffc_mca ] = crism_select_closestFFC(sclk);
 
 
 %% resolve the filenames

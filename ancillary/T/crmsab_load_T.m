@@ -1,5 +1,5 @@
-function [ trans_spcs ] = load_T( varargin )
-% [ trans_spcs ] = load_ADR_VS( varargin )
+function [ trans_spcs ] = crmsab_load_T( varargin )
+% [ trans_spcs ] = crmsab_load_T( varargin )
 %
 % Optional parameters
 %    'BINNING': binning mode {0,1,2,3,''}

@@ -389,7 +389,7 @@ if isdebug
 end
 
 %% read ADR transmission data
-propWA = getProp_basenameCDR4(WAdata.basename);
+propWA = crism_getProp_basenameCDR4(WAdata.basename);
 % [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
 switch t_mode
     case {1,2,3}

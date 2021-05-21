@@ -200,7 +200,7 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       T_MODE=5.
 %       (default) ''
 %    'VARARGIN_T': cell
-%       varargin for the function 'load_T_given' or 'load_T_sclk_closest'
+%       varargin for the function 'crmsab_load_T_given' or 'crmsab_load_T_sclk_closest'
 %       (default) {}
 %
 %  ## LIBRARY OPTIONS #----------------------------------------------------
@@ -815,10 +815,10 @@ switch t_mode
                                    'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
     case {4}
         sclk_img = (TRRIFdata.get_sclk_start()+TRRIFdata.get_sclk_stop())/2;
-        [ at_trans ] = load_T_sclk_closest(sclk_img,varargin_T{:});
+        [ at_trans ] = crmsab_load_T_sclk_closest(sclk_img,varargin_T{:});
         at_trans = crism_bin_image_frames(at_trans,'binning',WAdata.prop.binning);
     case {5}
-        [ at_trans ] = load_T_given_v2( obs_id_T,varargin_T{:});
+        [ at_trans ] = crmsab_load_T_given_v2( obs_id_T,varargin_T{:});
         at_trans = crism_bin_image_frames(at_trans,'binning',WAdata.prop.binning);
     otherwise
         error('Undefined t_mode %d',t_mode);
