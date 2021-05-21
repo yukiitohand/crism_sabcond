@@ -799,7 +799,7 @@ switch weight_mode
                 end
 
                 % Estimate the amount of photon noise
-                [WA_um_pitch] = get_WA_um_pitch_CRISM(WAdata);
+                [WA_um_pitch] = crism_get_WA_um_pitch(WAdata);
                 WA_um_pitch = permute(WA_um_pitch(:,:,bands),[3,1,2]);
                 SFimg = SFdata.readimgi();
                 SFimg = permute(SFimg(:,:,bands),[3,1,2]);

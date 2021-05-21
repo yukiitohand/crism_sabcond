@@ -1,5 +1,5 @@
-function [x_width] = get_width(x)
-% [x_width] = get_width(x)
+function [x_width] = wavelength_sample_get_width(x)
+% [x_width] = wavelength_sample_get_width(x)
 %  compute interval for x
 x = x(:);
 x_extend = zeros([length(x)+2,1]);

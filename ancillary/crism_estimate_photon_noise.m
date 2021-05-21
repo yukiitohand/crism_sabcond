@@ -1,5 +1,5 @@
-function [photon_noise_mad_stdif,WA_um_pitch] = estimate_photon_noise_CRISM(TRRYRAdata)
-% [photon_noise_mad_stdif] = estimate_photon_noise_CRISM(TRRYRAdata)
+function [photon_noise_mad_stdif,WA_um_pitch] = crism_estimate_photon_noise(TRRYRAdata)
+% [photon_noise_mad_stdif] = crism_estimate_photon_noise(TRRYRAdata)
 %  Estimate the median absolute deviation of photon noise in the domain of
 %  I/F. 
 %  INPUTS
@@ -32,6 +32,6 @@ SFimg = SFdata.readimgi();
 % [RDimg_1ord] = approx_HSI3d_1ord(RDimg,WA_nm,'MODE','COLUMN_MEAN');
 [RDimg_filled] = interp_nan_column_3D(RDimg,WA_nm);
 
-[photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(RDimg_filled,WA_nm,WA_um_pitch,TRRYRAdata.lbl,SFimg);
+[photon_noise_mad_stdif] = crism_estimate_photon_noise_base(RDimg_filled,WA_nm,WA_um_pitch,TRRYRAdata.lbl,SFimg);
 
 end

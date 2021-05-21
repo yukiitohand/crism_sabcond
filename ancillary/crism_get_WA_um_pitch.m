@@ -1,5 +1,5 @@
-function [WA_um_pitch] = get_WA_um_pitch_CRISM(WAdata)
-% [WA_um_pitch] = get_WA_um_pitch_CRISM(WAdata)
+function [WA_um_pitch] = crism_get_WA_um_pitch(WAdata)
+% [WA_um_pitch] = crism_get_WA_um_pitch(WAdata)
 %  Compute pitch of the wavelength frame
 %  INPUTS
 %  WAdata: CRISMdata obj, input wavelength frame
