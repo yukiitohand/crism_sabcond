@@ -416,8 +416,9 @@ switch weight_mode
             mYif1 = mYif'*Yif/norm(mYif,2)^2;
             Ymdl = mYif*mYif1;
         end
-        RDimg = if2rd(Ymdl,SFimg,lbl);
-        [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
+        
+        RDimg = crism_if2rd(Ymdl,SFimg,lbl);
+        [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
                                         RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         %
         % % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
@@ -618,8 +619,8 @@ switch weight_mode
             end
         end
         
-        RDimg = if2rd(Ymdl,SFimg,lbl);
-        [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
+        RDimg = crism_if2rd(Ymdl,SFimg,lbl);
+        [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
                                         RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         mad_rr_band_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
         res_exp = Yif - Ymdl;
@@ -735,9 +736,11 @@ switch weight_mode
                 Ymdl = exp(log(Ymdl) - logT*X(idxAlogT,:,:) + logt_est*Xtc);
             end
         end
-        RDimg = if2rd(Ymdl,SFimg,lbl);
-        [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
+        
+        RDimg = crism_if2rd(Ymdl,SFimg,lbl);
+        [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
                                         RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
+        
         mad_rr_theor = stdl1_ifdf+photon_noise_mad_stdif;
         res_exp = Yif - Ymdl;
         % mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,...
@@ -1010,9 +1013,11 @@ for n=2:nIter
                 end
             end
             
-            RDimg = if2rd(Ymdl,SFimg,lbl);
-            [photon_noise_mad_stdif] = estimate_photon_noise_CRISM_base(...
+            
+            RDimg = crism_if2rd(Ymdl,SFimg,lbl);
+            [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
                                         RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
+            
             res_exp = Yif - Ymdl;
             mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
             mad_rr_band = max(mad_rr_band_theor,mad_rr_band_prac);

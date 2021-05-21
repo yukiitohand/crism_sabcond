@@ -409,7 +409,7 @@ if isdebug
 end
 
 %% read ADR transmission data
-% prop = getProp_basenameCDR4(WAdata.basename);
+% prop = crism_getProp_basenameCDR4(WAdata.basename);
 % % [ at_trans ] = load_adr( 'WV_BIN',crim.info.cdr.WA(20),'T_MODE',t_mode );
 % % [ at_trans ] = load_ADR_VS('t_mode',t_mode,'BINNING',prop.binning,...
 % %                            'WAVELENGTH_FILTER',prop.wavelength_filter);
@@ -419,10 +419,10 @@ end
 
 switch t_mode
     case {1,2,3}
-        [ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
+        [ at_trans ] = crism_load_ADR_VS('BINNING',WAdata.prop.binning,...
                                    'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
     case {4}
-        [ at_trans ] = load_T();
+        [ at_trans ] = crmsab_load_T();
     otherwise
         error('Undefined t_mode %d',t_mode);
 end

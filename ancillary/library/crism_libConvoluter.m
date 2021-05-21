@@ -65,7 +65,7 @@ function [] = crism_libConvoluter(libname,opt,varargin)
 %      none
 %   crism_libConvoluter('CRISMTypeLib',2,'METHOD','interp1','WV_BIN','3');
 global crism_env_vars
-localCRISM_PDSrootDir = crism_env_vars.localCRISM_PDSrootDir;
+dir_cache = crism_env_vars.dir_CACHE;
 
 if nargin<2
     fprintf('Usage: [] = crism_libConvoluter(libname,opt,varargin)\n');
@@ -88,6 +88,8 @@ if (rem(length(varargin),2)==1)
 else
     for i=1:2:(length(varargin)-1)
         switch upper(varargin{i})
+            case 'DIR_CACHE'
+                dir_cache = varargin{i+1};
             case 'OVERWRITE'
                 overwrite = varargin{i+1};
             case 'WARN_OVERWRITE'
@@ -109,8 +111,7 @@ else
             case 'CLIST'
                 cList = varargin{i+1};
             otherwise
-                % Hmmm, something wrong with the parameter string
-                error(['Unrecognized option: ''' varargin{i} '''']);
+                error('Unrecognized option: %s', varargin{i});
         end
     end
 end
@@ -172,20 +173,37 @@ switch libname
 end
 
 % setups.retainRatio = retainRatio;
-% spdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/');
+
+dir_cacheWA = joinPath(dir_cache, 'WA/');
 if isempty(wabasename)
-    [ propWAptr ] = create_propCDR4basename( 'Acro','WA','BINNING',binning,'SENSOR_ID',sensor_id,'Version',vr);
-    [WAbasenameList,~] = getCDRbasenames_v2(propWAptr);
-else
-    if ischar(wabasename)
-        WAbasenameList = {wabasename};
-    elseif iscell(wabasename)
-        WAbasenameList = wabasename;
+    [ propWAptr ] = crism_create_propCDR4basename( 'Acro','WA','BINNING',binning,'SENSOR_ID',sensor_id,'Version',vr);
+    [~,wabasename,~] = crism_search_cdr_fromProp(propWAptr);
+    if isempty(wabasename)
+        error('No matching WA file is found');
     end
 end
 
+
+if ischar(wabasename)
+    WAbasenameList = {wabasename};
+elseif iscell(wabasename)
+    % Eliminate duplicated WA files.
+    WAbasenameList = []; wa_identfr_list = [];
+    for i=1:length(wabasename)
+        wabasename_i = wabasename{i};
+        wa_identfr_i = crmsab_get_libWAIdentifier(wabasename_i);
+        if ~any(strcmpi(wa_identfr_i,wa_identfr_list))
+            WAbasenameList  = [WAbasenameList {wabasename_i}];
+            wa_identfr_list = [wa_identfr_list {wa_identfr_i}];
+        end
+    end
+end
+
+
+
 for i=1:length(WAbasenameList)
     wabasename = WAbasenameList{i};
+    [wa_identfr] = crmsab_get_libWAIdentifier(wabasename);
     %propWA = getProp_basenameCDR4(wabasename);
     %WAdir = get_dirpath_cdr_fromProp(propWA);
     WAdata = CRISMdata(wabasename,'');
@@ -199,11 +217,11 @@ for i=1:length(WAbasenameList)
     imgwa = WAdata.readimgi();
     imgsb = SBdata.readimgi();
     
-    pdir_cache2 = joinPath(pdir_cache,wabasename);
-    if ~exist(pdir_cache2,'dir')
-        mkdir(pdir_cache2);
+    dir_cacheWAbase = joinPath(dir_cacheWA,wa_identfr);
+    if ~exist(dir_cacheWAbase,'dir')
+        mkdir(dir_cacheWAbase);
     end
-    [masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio);
+    [masterbase] = crmsab_const_libmasterbase(libname,opt,wa_identfr,method,retainRatio);
     fprintf('Starting %s, current time: %s\n',wabasename,datetime());
     if isempty(cList)
         cList = 1:WAdata.hdr.samples;
@@ -216,7 +234,7 @@ for i=1:length(WAbasenameList)
         if ~all(isnan(wvc))
             tc = tic;
             sbc = squeeze(imgsb(:,c,:))';
-            [cachefilepath] = crmsab_const_libcachefilepath(pdir_cache2,masterbase,c);
+            [cachefilepath] = crmsab_const_libcachefilepath(dir_cacheWAbase,masterbase,c);
             
             if ~overwrite && exist(cachefilepath,'file')
                 fprintf('Skipping %s\n',cachefilepath);

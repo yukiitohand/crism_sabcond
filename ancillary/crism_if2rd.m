@@ -1,5 +1,5 @@
-function [RD] = if2rd(IoF,SF,lbl)
-% [RD] = if2rd(IoF,SFimg,r)
+function [RD] = crism_if2rd(IoF,SF,lbl)
+% [RD] = crism_if2rd(IoF,SFimg,r)
 %   convert I/F to radiance
 %  Input Parameters
 %   IoF: I/F 

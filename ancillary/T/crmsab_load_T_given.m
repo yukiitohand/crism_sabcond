@@ -1,5 +1,5 @@
-function [ trans_spcs ] = load_T_given( obs_id,varargin )
-% [ trans_spcs ] = load_T_given( obs_id,varargin )
+function [ trans_spcs ] = crmsab_load_T_given( obs_id,varargin )
+% [ trans_spcs ] = crmsab_load_T_given( obs_id,varargin )
 % transmission is loaded based on the give obs_id
 % INPUTS
 %  obs_id: string, 8characters or less

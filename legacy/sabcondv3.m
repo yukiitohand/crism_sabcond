@@ -407,10 +407,10 @@ end
 
 switch t_mode
     case {1,2,3}
-        [ at_trans ] = load_ADR_VS('BINNING',WAdata.prop.binning,...
+        [ at_trans ] = crism_load_ADR_VS('BINNING',WAdata.prop.binning,...
                                    'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
     case {4}
-        [ at_trans ] = load_T();
+        [ at_trans ] = crmsab_load_T();
     otherwise
         error('Undefined t_mode %d',t_mode);
 end

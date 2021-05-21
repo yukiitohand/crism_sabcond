@@ -1,4 +1,4 @@
-[obs_dirname_list] = read_obs_dirname_list('obs_dirname_list_ffc_OlymMons');
+[obs_dirname_list] = crism_read_obs_dirname_list('obs_dirname_list_ffc_OlymMons');
 
 
 for i=1:length(obs_dirname_list)

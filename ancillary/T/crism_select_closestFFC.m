@@ -1,5 +1,5 @@
-function [ dirname_ffc,dirname_ffc_mcb,dirname_ffc_mca ] = select_closestFFC(sclk)
-% [ dirname_ffc,dirname_ffc_mcb,dirname_ffc_mca ] = select_closestFFC(sclk)
+function [ dirname_ffc,dirname_ffc_mcb,dirname_ffc_mca ] = crism_select_closestFFC(sclk)
+% [ dirname_ffc,dirname_ffc_mcb,dirname_ffc_mca ] = crism_select_closestFFC(sclk)
 %   obtain the dirname of the closest FFC measurements, accompanied with
 %   the most recent before and most closest post FFC.
 %  INPUT
