@@ -12,7 +12,7 @@ BP = BP==1;
 
 [L,S,B] = size(img);
 
-img_nanmed = nanmedian(img,1);
+img_nanmed = median(img,1,'omitnan');
 
 GP = (BP==0);
 GP1nan = convertBoolTo1nan(GP);
@@ -45,10 +45,10 @@ while n_new<n_old
     %-------------------------------------------------------------------------%
     % second, averaging the ratios among the spatial neighbors
     val_ratio_sbl = nan(1,S,B);
-    val_ratio_sbl(:,2:(S-1),:) = nanmean(cat(1,val_ratio_bl(:,1:(S-2),:),val_ratio_bl(:,3:S,:)),1);
+    val_ratio_sbl(:,2:(S-1),:) = mean(cat(1,val_ratio_bl(:,1:(S-2),:),val_ratio_bl(:,3:S,:)),1,'omitnan');
 
     val_ratio_sbr = nan(1,S,B);
-    val_ratio_sbr(:,2:(S-1),:) = nanmean(cat(1,val_ratio_br(:,1:(S-2),:),val_ratio_br(:,3:S,:)),1);
+    val_ratio_sbr(:,2:(S-1),:) = mean(cat(1,val_ratio_br(:,1:(S-2),:),val_ratio_br(:,3:S,:)),1,'omitnan');
 
 %     val_ratio_combined = nan(1,S,B);
 %     a = cat(1,...
