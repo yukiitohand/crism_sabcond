@@ -452,6 +452,7 @@ lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 % 
 % lambda_c_ori = bands_bias_mad./Ymdl;
 lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad)./(Ymdl);
+% lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif)./(Ymdl);
 lambda_c = lambda_c_ori;
 lambda_c(logYif_isnan) = inf;
 lambda_c([1,Nc],:,:) = 0; % safeguard

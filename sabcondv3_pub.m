@@ -649,7 +649,7 @@ switch upper(opt_img)
         basename_cr = [TRRIFdata.basenameIF suffix];
     case 'RA_IF'
         basename_cr = [crism_obs.info.basenameRA '_IF' suffix];
-    case {'TRRY','TRRB','TRRC','TRRD'}
+    case {'TRRY','TRRB','TRRC','TRRD','TRRE'}
         trr_vr = opt_img(4);
         basenameTRRY = crism_get_TRRXbasename(TRRIFdata,trr_vr);
         basename_cr = [basenameTRRY suffix];
@@ -721,7 +721,7 @@ if isempty(img_cube)
             TRRRAIFdata = CRISMdataCAT([crism_obs.info.basenameRA '_IF'],crism_obs.info.dir_trdr,'ra_if');
             Yif = TRRRAIFdata.readimgi();
 
-        case {'TRRY','TRRB','TRRC','TRRD'}
+        case {'TRRY','TRRB','TRRC','TRRD','TRRE'}
             d_IoF = joinPath(dir_TRRX, crism_obs.info.yyyy_doy, crism_obs.info.dirname);
             TRRYIFdata = CRISMdata(basenameTRRY,d_IoF);
             Yif = TRRYIFdata.readimgi();
@@ -842,7 +842,7 @@ switch weight_mode
         switch upper(opt_img)
             case {'IF','RA_IF'}
                 error('weight_mode=%d only works with TRRB,TRRC,TRRC',weight_mode);
-            case {'TRRY','TRRB','TRRC','TRRD'}
+            case {'TRRY','TRRB','TRRC','TRRD','TRRE'}
                 switch TRRIFdata.lbl.OBSERVATION_TYPE
                     case {'FRT','HRL','HRS','FFC'}
                         Noutliers = 4;
@@ -890,7 +890,7 @@ switch weight_mode
                     case {'TRRY','TRRB'}
                         SFdata = TRRIFdata.readCDR('SF');
 
-                    case {'TRRC','TRRD'}
+                    case {'TRRC','TRRD','TRRE'}
                         SFdata = TRRIFdata.readCDR('SF');
 
                     otherwise
@@ -1543,7 +1543,7 @@ switch opt_img
         hdr_cr.cat_input_files = [TRRIFdata.basename '.IMG'];
     case 'ra_if'
         hdr_cr.cat_input_files = [TRRRAIFdata.basename '_IF.IMG'];
-    case {'TRRY','TRRC','TRRB','TRRD'}
+    case {'TRRY','TRRC','TRRB','TRRD','TRRE'}
         hdr_cr.cat_input_files = [basenameTRRY '.IMG'];
     otherwise
         error('opt_img = %s is not defined',opt_img);
