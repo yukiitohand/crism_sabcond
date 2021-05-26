@@ -926,8 +926,6 @@ T = at_trans(:,:,bands); T(T<=1e-8) = nan;
 T = permute(T,[3,1,2]); 
 
 switch precision
-    case 'single'
-        T = single(T);
     case 'double'
         T = double(T);
 end
