@@ -920,7 +920,7 @@ switch upper(PROC_MODE)
             if Alib_out
                 switch upper(optLibrary)
                     case 'FULL'
-                        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v3(optLibs,basenameWA,optInterpid,c,...
+                        [Alib,infoAall,valid_idx] = crmsab_loadAlibconv(optLibs,basenameWA,optInterpid,c,...
                             bands_opt,WAb(:,c),cntRmvl);
                     case 'MINI'
                         [Alib,infoAall,valid_idx] = crmsab_loadAlibconv_mini(optLibs,basenameWA,optInterpid,c,bands_opt);
@@ -932,7 +932,7 @@ switch upper(PROC_MODE)
             else
                 switch upper(optLibrary)
                     case 'FULL'
-                        [Alib] = crmsab_loadlibsc_v3(optLibs,basenameWA,optInterpid,c,...
+                        [Alib] = crmsab_loadAlibconv(optLibs,basenameWA,optInterpid,c,...
                             bands_opt,WAb(:,c),cntRmvl);
                     case 'MINI'
                         [Alib] = crmsab_loadAlibconv_mini(optLibs,basenameWA,optInterpid,c,bands_opt);
@@ -944,7 +944,7 @@ switch upper(PROC_MODE)
                 if Alib_out
                     switch upper(optLibrary)
                         case 'FULL'
-                            [Aicelib,infoAiceall,valid_idx_ice] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
+                            [Aicelib,infoAiceall,valid_idx_ice] = crmsab_loadAicelibconv(opticelib,basenameWA,c,...
                                 bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                         case 'MINI'
                             [Aicelib,infoAiceall,valid_idx_ice] = crmsab_loadAicelibconv_mini(opticelib,basenameWA,c,bands_opt);
@@ -956,7 +956,7 @@ switch upper(PROC_MODE)
                 else
                     switch upper(optLibrary)
                         case 'FULL'
-                            [Aicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
+                            [Aicelib] = crmsab_loadAicelibconv(opticelib,basenameWA,c,...
                                 bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                         case 'MINI'
                             [Aicelib] = crmsab_loadAicelibconv_mini(opticelib,basenameWA,c,bands_opt);
@@ -1051,7 +1051,7 @@ switch upper(PROC_MODE)
                 if Alib_out && (ni==1) && (i==1)
                     switch upper(optLibrary)
                         case 'FULL'
-                            [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v3(...
+                            [Alib,infoAall,valid_idx] = crmsab_loadAlibconv(...
                                 optLibs,basenameWA,optInterpid,c,...
                                 bands_opt,WAb(:,c),cntRmvl);
                         case 'MINI'
@@ -1065,7 +1065,7 @@ switch upper(PROC_MODE)
                 else
                     switch upper(optLibrary)
                         case 'FULL'
-                            [Alib] = crmsab_loadlibsc_v3(...
+                            [Alib] = crmsab_loadAlibconv(...
                                 optLibs,basenameWA,optInterpid,c,...
                                 bands_opt,WAb(:,c),cntRmvl);
                         case 'MINI'
@@ -1080,7 +1080,7 @@ switch upper(PROC_MODE)
                         switch upper(optLibrary)
                             case 'FULL'
                                 [Aicelib,infoAiceall,valid_idx_ice]...
-                                    = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
+                                    = crmsab_loadAicelibconv(opticelib,basenameWA,c,...
                                     bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                             case 'MINI'
                                 [Aicelib,infoAiceall,valid_idx_ice] ...
@@ -1093,7 +1093,7 @@ switch upper(PROC_MODE)
                     else
                         switch upper(optLibrary)
                             case 'FULL'
-                                [Aicelib] = crmsab_loadlibc_icelib(...
+                                [Aicelib] = crmsab_loadAicelibconv(...
                                     opticelib,basenameWA,c,...
                                     bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
                             case 'MINI'

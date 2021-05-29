@@ -28,7 +28,7 @@ if ~overwrite && exist(Aicelibcachefilepath,'file')
     load(Aicelibcachefilepath,'Aicelib');
     if nargout>1
         load(Aicelibcachefilepath,'valid_idx');
-        infoAicelibcachefname    = crmsab_constAicelibcachefname_infoAicelib(libprefix);
+        infoAicelibcachefname    = crmsab_constAicelibcachefname_infoAicelib(opt);
         infoAicelibcachefilepath = joinPath(dir_cache,infoAicelibcachefname);
         load(infoAicelibcachefilepath,'infoAicelib');
     end
