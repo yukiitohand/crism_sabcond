@@ -64,8 +64,7 @@ else
             case 'DIR_CACHE'
                 dir_cache = varargin{i+1};
             otherwise
-                % Hmmm, something wrong with the parameter string
-                error(['Unrecognized option: ''' varargin{i} '''']);
+                error('Unrecognized option: %s', varargin{i});
         end
     end
 end

@@ -1,4 +1,4 @@
-function [ Alib,infoAall,valid_idx ] = crmsab_loadlibsc_v3(optLibs,wabasename,optInterpid,c,bands_opt,wvc,cntRmvl,varargin)
+function [ Alib,infoAall,valid_idx,Aall ] = crmsab_loadlibsc_v3(optLibs,wabasename,optInterpid,c,bands_opt,wvc,cntRmvl,varargin)
 global crism_env_vars
 
 dir_cache = crism_env_vars.dir_CACHE;
@@ -40,7 +40,13 @@ if ~overwrite && exist(Alibcachefilepath,'file')
         load(Alibcachefilepath,'logAallNrmedvalid');
     end
     if nargout>1
-        load(Alibcachefilepath,'infoAall','valid_idx');
+        load(Alibcachefilepath,'valid_idx');
+        infoAlibcachefname    = crmsab_const_infoAlibcachefname(libprefix,wa_identfr,optInterpid,bands_opt,c);
+        infoAlibcachefilepath = joinPath(Alibdir,infoAlibcachefname);
+        load(infoAlibcachefilepath,'infoAall');
+        if nargout>3
+            load(Alibcachefilepath,'Aall');
+        end
     end
 else
     % crism spectral library

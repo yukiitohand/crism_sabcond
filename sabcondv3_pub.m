@@ -204,6 +204,12 @@ function [out] = sabcondv3_pub(obs_id,varargin)
 %       (default) {}
 %
 %  ## LIBRARY OPTIONS #----------------------------------------------------
+%   'OPT_LIBRARY': char, string {'mini','full'}
+%       'mini': if you have the minimum set of the library for default
+%       processing, you need to use band_opt= 4 and cntRmvl option is just 
+%       ignored. library is also limited to 1112 and 1164
+%       'full': full support. This is for custom setting for the library.
+%       (default) 'mini'
 %   'CNTRMVL': boolean
 %       whether or not to perform continuum removal on library spectra
 %       (default) 1
@@ -304,6 +310,7 @@ obs_id_T = '';
 varargin_T = {};
 
 % ## LIBRARY OPTIONS #-----------------------------------------------------
+optLibrary      = 'mini'; %{'mini','full'}
 cntRmvl         = 1;
 optInterpid     = 1;
 optCRISMspclib  = 1;
@@ -404,6 +411,8 @@ else
                 varargin_T = varargin{i+1};
                 
             % ## LIBRARY OPTIONS #-----------------------------------------
+            case 'LIBRARY_OPT'
+                optLibrary = varargin{i+1};
             case 'CNTRMVL'
                 cntRmvl = varargin{i+1};
             case 'OPTINTERPID'
@@ -909,23 +918,51 @@ switch upper(PROC_MODE)
         for c = Columns_valid
             tic;
             if Alib_out
-                [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v3(optLibs,basenameWA,optInterpid,c,...
-                bands_opt,WAb(:,c),cntRmvl);
+                switch upper(optLibrary)
+                    case 'FULL'
+                        [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v3(optLibs,basenameWA,optInterpid,c,...
+                            bands_opt,WAb(:,c),cntRmvl);
+                    case 'MINI'
+                        [Alib,infoAall,valid_idx] = crmsab_loadAlibconv_mini(optLibs,basenameWA,optInterpid,c,bands_opt);
+                    otherwise
+                        error('Undefined OPT_LIBRARY %s',optLibrary);
+                end
                 ancillaries(c).Alib = Alib;
                 ancillaries(c).infoAlib = infoAall(valid_idx);
             else
-                [Alib] = crmsab_loadlibsc_v3(optLibs,basenameWA,optInterpid,c,...
-                bands_opt,WAb(:,c),cntRmvl);
+                switch upper(optLibrary)
+                    case 'FULL'
+                        [Alib] = crmsab_loadlibsc_v3(optLibs,basenameWA,optInterpid,c,...
+                            bands_opt,WAb(:,c),cntRmvl);
+                    case 'MINI'
+                        [Alib] = crmsab_loadAlibconv_mini(optLibs,basenameWA,optInterpid,c,bands_opt);
+                    otherwise
+                        error('Undefined OPT_LIBRARY %s',optLibrary);
+                end
             end
             if ~isempty(opticelib)
                 if Alib_out
-                    [Aicelib,infoAiceall,valid_idx_ice] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
-                        bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                    switch upper(optLibrary)
+                        case 'FULL'
+                            [Aicelib,infoAiceall,valid_idx_ice] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
+                                bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                        case 'MINI'
+                            [Aicelib,infoAiceall,valid_idx_ice] = crmsab_loadAicelibconv_mini(opticelib,basenameWA,c,bands_opt);
+                        otherwise
+                            error('Undefined OPT_LIBRARY %s',optLibrary);
+                    end
                     ancillaries(c).Aicelib = Aicelib;
                     ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
                 else
-                    [Aicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
-                        bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                    switch upper(optLibrary)
+                        case 'FULL'
+                            [Aicelib] = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
+                                bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                        case 'MINI'
+                            [Aicelib] = crmsab_loadAicelibconv_mini(opticelib,basenameWA,c,bands_opt);
+                        otherwise
+                            error('Undefined OPT_LIBRARY %s',optLibrary);
+                    end
                 end
             else
                 Aicelib = [];
@@ -1012,27 +1049,59 @@ switch upper(PROC_MODE)
             for i = 1:length(Columns)
                 c = Columns(i);
                 if Alib_out && (ni==1) && (i==1)
-                    [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v3(...
-                        optLibs,basenameWA,optInterpid,c,...
-                        bands_opt,WAb(:,c),cntRmvl);
+                    switch upper(optLibrary)
+                        case 'FULL'
+                            [Alib,infoAall,valid_idx] = crmsab_loadlibsc_v3(...
+                                optLibs,basenameWA,optInterpid,c,...
+                                bands_opt,WAb(:,c),cntRmvl);
+                        case 'MINI'
+                            [Alib,infoAall,valid_idx] = crmsab_loadAlibconv_mini( ...
+                                optLibs,basenameWA,optInterpid,c,bands_opt);
+                        otherwise
+                            error('Undefined OPT_LIBRARY %s',optLibrary);
+                    end
                     ancillaries(c).Alib     = Alib;
                     ancillaries(c).infoAlib = infoAall(valid_idx);
                 else
-                    [Alib] = crmsab_loadlibsc_v3(...
-                        optLibs,basenameWA,optInterpid,c,...
-                        bands_opt,WAb(:,c),cntRmvl);
+                    switch upper(optLibrary)
+                        case 'FULL'
+                            [Alib] = crmsab_loadlibsc_v3(...
+                                optLibs,basenameWA,optInterpid,c,...
+                                bands_opt,WAb(:,c),cntRmvl);
+                        case 'MINI'
+                            [Alib] = crmsab_loadAlibconv_mini( ...
+                                optLibs,basenameWA,optInterpid,c,bands_opt);
+                        otherwise
+                            error('Undefined OPT_LIBRARY %s',optLibrary);
+                    end
                 end
                 if ~isempty(opticelib)
                     if Alib_out
-                        [Aicelib,infoAiceall,valid_idx_ice]...
-                            = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
-                            bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                        switch upper(optLibrary)
+                            case 'FULL'
+                                [Aicelib,infoAiceall,valid_idx_ice]...
+                                    = crmsab_loadlibc_icelib(opticelib,basenameWA,c,...
+                                    bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                            case 'MINI'
+                                [Aicelib,infoAiceall,valid_idx_ice] ...
+                                    = crmsab_loadAicelibconv_mini(opticelib,basenameWA,c,bands_opt);
+                            otherwise
+                                error('Undefined OPT_LIBRARY %s',optLibrary);
+                        end
                         ancillaries(c).Aicelib     = Aicelib;
                         ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
                     else
-                        [Aicelib] = crmsab_loadlibc_icelib(...
-                            opticelib,basenameWA,c,...
-                            bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                        switch upper(optLibrary)
+                            case 'FULL'
+                                [Aicelib] = crmsab_loadlibc_icelib(...
+                                    opticelib,basenameWA,c,...
+                                    bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',0);
+                            case 'MINI'
+                                [Aicelib] = crmsab_loadAicelibconv_mini(...
+                                    opticelib,basenameWA,c,bands_opt);
+                            otherwise
+                                error('Undefined OPT_LIBRARY %s',optLibrary);
+                        end
                     end
                 else
                     Aicelib = [];
@@ -1305,6 +1374,7 @@ end
 fprintf(fid, '\n');
 
 % ## LIBRARY OPTIONS #-----------------------------------------------------
+fprintf(fid,'OPT_LIBRARY: %d\n',optLibrary);
 fprintf(fid,'CNTRMVL: %d\n',cntRmvl);
 fprintf(fid,'OPTINTERPID: %d\n',optInterpid);
 fprintf(fid,'OPT_CRISMSPCLIB: %d\n',optCRISMspclib);
@@ -1372,6 +1442,7 @@ settings.t_mode = t_mode;
 settings.obs_id_T = obs_id_T;
 settings.varargin_T = varargin_T;
 % ## LIBRARY OPTIONS #-----------------------------------------------------
+settings.optLibrary = optLibrary;
 settings.cntRmvl = cntRmvl;
 settings.optInterpid = optInterpid;
 settings.optCRISMspclib = optCRISMspclib;
