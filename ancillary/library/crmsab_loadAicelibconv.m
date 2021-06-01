@@ -57,9 +57,9 @@ else
     end
     
     save(Aicelibcachefilepath,'Aicelib','valid_idx');
-    if upd_infoAicelib
-        infoAicelibcachefname    = crmsab_constAicelibcachefname_infoAicelib(opt);
-        infoAicelibcachefilepath = joinPath(dir_cache,infoAicelibcachefname);
+    infoAicelibcachefname    = crmsab_constAicelibcachefname_infoAicelib(opt);
+    infoAicelibcachefilepath = joinPath(dir_cache,infoAicelibcachefname);
+    if ~exist(infoAicelibcachefilepath,'file') || upd_infoAicelib
         save(infoAicelibcachefilepath,'infoAicelib');
     end
 end

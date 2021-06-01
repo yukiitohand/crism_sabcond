@@ -50,9 +50,6 @@ if ~overwrite && exist(Alibcachefilepath,'file')
         end
     end
 else
-    Aall_cachefname    = crmsab_constAlibcachefname_Aall(libprefix,wa_identfr,optInterpid,bands_opt,c);
-    Aall_cachefilepath = joinPath(Alibdir,Aall_cachefname);
-    
     optInterp = crmsab_const_liboptInterp(optInterpid);
     bands     = crmsab_genBands(bands_opt);
     % crism spectral library
@@ -98,11 +95,17 @@ else
     
     % save
     save(Alibcachefilepath,'valid_idx','logAallNrmedvalid','logAcntrmvd');
-    if upd_infoAall
-        infoAlibcachefname    = crmsab_constAlibcachefname_infoAall(libprefix);
-        infoAlibcachefilepath = joinPath(dir_cache,infoAlibcachefname);
+    
+    % save infoAall
+    infoAlibcachefname    = crmsab_constAlibcachefname_infoAall(libprefix);
+    infoAlibcachefilepath = joinPath(dir_cache,infoAlibcachefname);
+    if ~exist(infoAlibcachefilepath,'file') ||  upd_infoAall
         save(infoAlibcachefilepath,'infoAall');
     end
+    
+    % save Aall
+    Aall_cachefname    = crmsab_constAlibcachefname_Aall(libprefix,wa_identfr,optInterpid,c);
+    Aall_cachefilepath = joinPath(Alibdir,Aall_cachefname);
     save(Aall_cachefilepath,'Aall');
 
 end

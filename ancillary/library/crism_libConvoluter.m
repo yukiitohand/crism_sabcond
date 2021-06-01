@@ -59,6 +59,8 @@ function [] = crism_libConvoluter(libname,opt,varargin)
 %      'CList'     : list of the columns to operate
 %                    if it's empty, then all the columns are performed
 %                    (default) []
+%      'VERBOSE'     : 
+%                    (default) 1
 %   Output
 %      none
 %   crism_libConvoluter('CRISMTypeLib',2,'METHOD','interp1','WV_BIN','3');
@@ -79,6 +81,7 @@ sensor_id = 'L';
 vr = '3';
 wabasename = '';
 cList = [];
+verbose = 1;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -105,6 +108,8 @@ else
                 wabasename = varargin{i+1};
             case 'CLIST'
                 cList = varargin{i+1};
+            case 'VERBOSE'
+                verbose = varargin{i+1};
             otherwise
                 error('Unrecognized option: %s', varargin{i});
         end
@@ -325,7 +330,7 @@ for i=1:length(WAbasenameList)
                     switch libname
                         case 'CRISMspclib'
                             [Acrismspclib] = convCRISMspclib_v3(CRISMspclib,...
-                                libs_CRISMspclib,wvc,sbc,'RETAINRATIO',retainRatio,'XMULT',xmult);
+                                libs_CRISMspclib,wvc,sbc,'RETAINRATIO',retainRatio); %,'XMULT',xmult);
                             option.method = method; option.retainRatio = retainRatio;
                             save(cachefilepath,'Acrismspclib','option');
                         case 'RELAB'
