@@ -1,4 +1,4 @@
-function [Aicelib,infoAicelib] = wrapper_crism_icelib(opt,wabasename,c)
+function [Aicelib,infoAicelib] = crmsab_load_icelibconv_wrapper(opt,wabasename,c)
 
 switch opt
     case 1

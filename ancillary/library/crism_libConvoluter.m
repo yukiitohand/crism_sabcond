@@ -1,12 +1,10 @@
 function [] = crism_libConvoluter(libname,opt,varargin)
+% crism_libConvoluter(libname,opt,varargin)
 % this is a main function to perform convolution of the different kinds of
 % CRISM libraries with all of the specified types of WA files. 
 % The output file is stored in 
-%     pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/')
+%     dir_CACHE
 % filename is defined by
-%     pdir_cache2 = joinPath(pdir_cache,wabasename);
-%     [masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio);
-%     [cachefilepath] = crmsab_const_libcachefilepath(pdir_cache2,masterbase,c);
 % See those files for details
 %   
 %   Input Parameters
@@ -61,6 +59,8 @@ function [] = crism_libConvoluter(libname,opt,varargin)
 %      'CList'     : list of the columns to operate
 %                    if it's empty, then all the columns are performed
 %                    (default) []
+%      'VERBOSE'     : 
+%                    (default) 1
 %   Output
 %      none
 %   crism_libConvoluter('CRISMTypeLib',2,'METHOD','interp1','WV_BIN','3');
@@ -81,7 +81,7 @@ sensor_id = 'L';
 vr = '3';
 wabasename = '';
 cList = [];
-pdir_cache = joinPath(localCRISM_PDSrootDir, 'cache/WA/');
+verbose = 1;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -94,8 +94,6 @@ else
                 overwrite = varargin{i+1};
             case 'WARN_OVERWRITE'
                 warn_overwrite = varargin{i+1};
-            case 'CACHE_PDIRPATH'
-                pdir_cache = varargin{i+1};
             case 'METHOD'
                 method = varargin{i+1};
             case 'RETAINRATIO'
@@ -110,6 +108,8 @@ else
                 wabasename = varargin{i+1};
             case 'CLIST'
                 cList = varargin{i+1};
+            case 'VERBOSE'
+                verbose = varargin{i+1};
             otherwise
                 error('Unrecognized option: %s', varargin{i});
         end
@@ -131,48 +131,118 @@ switch libname
         % [CRISMspclib] = readCRISMspclib();
         % libs_CRISMspclib = 'all';
         [CRISMspclib,libs_CRISMspclib] = load_CRISMspclib(opt);
+        [infoAcrismspclib] = CRISMspclib2libstruct(CRISMspclib,libs_CRISMspclib);
         xmult = 1;
+        infoAname = 'infoAcrismspclib';
     case 'RELAB'
-        [spclib_relab_actv] = load_spclib_relab(opt);
+        [infoArelab] = load_spclib_relab(opt);
         xmult = 1;
+        infoAname = 'infoArelab';
     case 'USGSsplib'
-        [splibUSGS] = load_splibUSGS(opt);
+        [infoAusgs] = load_splibUSGS(opt);
         xmult = 1000;
+        infoAname = 'infoAusgs';
     case 'CRISMTypeLib'
-        [crismTypeLib] = load_CRISMTypeLib(opt);
+        [infoAcrismTypeLib] = load_CRISMTypeLib(opt);
         xmult = 1000;
+        infoAname = 'infoAcrismTypeLib';
     case 'abscoeffH2Oicelib_Mastrapa2009'
-        [abscoeffH2Oicelib_Mastrapa2009] = load_abscoeffH2Oicelib_Mastrapa2009();
+        [infoMastrapa2009] = load_abscoeffH2Oicelib_Mastrapa2009();
         xmult = 1;
+        infoAname = 'infoMastrapa2009';
     case 'abscoeffH2Oicelib_Grundy1998'
-        [abscoeffH2Oicelib_Grundy1998] = load_abscoeffH2Oicelib_Grundy1998();
+        [infoGrundy1998] = load_abscoeffH2Oicelib_Grundy1998();
         xmult = 1;
+        infoAname = 'infoGrundy1998';
     case 'abscoeffH2Oicelib_GhoSSTGrundy1998'
-        [abscoeffH2Oicelib_GhoSSTGrundy1998] = load_abscoeffH2Oicelib_GhoSSTGrundy1998();
+        [infoGhoSSTGrundy1998] = load_abscoeffH2Oicelib_GhoSSTGrundy1998();
         xmult = 1;
+        infoAname = 'infoGhoSSTGrundy1998';
     case 'abscoeffH2Oicelib_Warren2008'
-        [abscoeffH2Oicelib_Warren2008] = load_abscoeffH2Oicelib_Warren2008();
+        [infoWarren2008] = load_abscoeffH2Oicelib_Warren2008();
         xmult = 1;
+        infoAname = 'infoWarren2008';
     case 'abscoeffCO2icelib_Hansen'
-        [abscoeffCO2icelib_Hansen] = load_abscoeffCO2icelib_Hansen();
+        [infoHansen] = load_abscoeffCO2icelib_Hansen();
         xmult = 1;
+        infoAname = 'infoHansen';
     case 'absxsecH2Olib_HITRAN'
-        [absxsecH2Olib_HITRAN] = load_absxsecH2Olib_HITRAN(opt);
+        [infoabsxsecH2Olib_HITRAN] = load_absxsecH2Olib_HITRAN(opt);
         xmult = 1000;
+        infoAname = 'infoabsxsecH2Olib_HITRAN';
     case 'absxsecCO2lib_HITRAN'
-        [absxsecCO2lib_HITRAN] = load_absxsecCO2lib_HITRAN(opt);
+        [infoabsxsecCO2lib_HITRAN] = load_absxsecCO2lib_HITRAN(opt);
         xmult = 1000;
+        infoAname = 'infoabsxsecCO2lib_HITRAN';
     case 'absxsecCOlib_HITRAN'
-        [absxsecCOlib_HITRAN] = load_absxsecCOlib_HITRAN(opt);
+        [infoabsxsecCOlib_HITRAN] = load_absxsecCOlib_HITRAN(opt);
         xmult = 1000;
+        infoAname = 'infoabsxsecCOlib_HITRAN';
     case 'Q_H2Oicelib_Grundy1998'
-        [Q_H2Oicelib_Grundy1998] = load_Q_H2Oice_Grundy1998(opt);
+        [infoQ_H2Oicelib_Grundy1998] = load_Q_H2Oice_Grundy1998(opt);
         xmult = 1;
+        infoAname = 'infoQ_H2Oicelib_Grundy1998';
     otherwise
-        error('lib %s is not defined. Please select from\n{"CRISMspclib","RELAB","USGSsplib","CRISMTypLib"} (case sensitive)',libname);
+        error([ ...
+            'lib %s is not defined. Please select from: \n'           , ...
+            '     CRISMspclib\n'                                      , ...
+            '     RELAB\n'                                            , ...
+            '     USGSsplib\n'                                        , ...
+            '     CRISMTypLib\n'                                      , ...
+            '     abscoeffH2Oicelib_Mastrapa2009\n'                   , ...
+            '     abscoeffH2Oicelib_Grundy1998\n'                     , ...
+            '     abscoeffH2Oicelib_GhoSSTGrundy1998\n'               , ...
+            '     abscoeffH2Oicelib_Warren2008\n'                     , ...
+            '     abscoeffCO2icelib_Hansen\n'                         , ...
+            '     absxsecH2Olib_HITRAN\n'                             , ...
+            '     absxsecCO2lib_HITRAN\n'                             , ...
+            '     absxsecCOlib_HITRAN\n'                              , ...
+            '     Q_H2Oicelib_Grundy1998\n'                           , ...
+            '(case sensitive)'                                          ...
+            ], ...
+            libname);
 end
 
-% setups.retainRatio = retainRatio;
+%%
+if ~exist(dir_cache,'dir')
+    [status] = mkdir(dir_cache);
+    if status
+        chmod777(dir_cache,verbose);
+    else
+        error('Failed to create %s',dir_cache);
+    end
+end
+    
+% First save library info struct
+[infocachefname] = crmsab_const_libcachefname_info(libname,opt);
+infocachefilepath = joinPath(dir_cache,infocachefname);
+if ~overwrite && exist(infocachefilepath,'file')
+    fprintf('Skipping %s\n',infocachefilepath);
+elseif ~exist(infocachefilepath,'file') || overwrite
+    flg=1;
+    if exist(infocachefilepath,'file')
+        if warn_overwrite
+            flg = doyouwantto('overwrite',sprintf('%s exists',infocachefilepath));
+            if flg
+                fprintf('Overwriting %s\n',infocachefilepath);
+            end
+        end
+    end
+    if flg
+        save(infocachefilepath,infoAname);
+    end
+end
+
+%% Next
+dir_cacheWA = joinPath(dir_cache, 'WA/');
+if ~exist(dir_cacheWA,'dir')
+    [status] = mkdir(dir_cacheWA);
+    if status
+        chmod777(dir_cacheWA,verbose);
+    else
+        error('Failed to create %s',dir_cacheWA);
+    end
+end
 
 dir_cacheWA = joinPath(dir_cache, 'WA/');
 if isempty(wabasename)
@@ -210,7 +280,7 @@ for i=1:length(WAbasenameList)
     % [lblwa,hdrwa,imgwa] = crismCDRread_v2(WAdir,'WA',wabasename);
     propSB = WAdata.prop; propSB.acro_calibration_type = 'SB';
     % SBdir = get_dirpath_cdr_fromProp(propSB); 
-    sbbasename = get_basenameCDR4_fromProp(propSB);
+    sbbasename = crism_get_basenameCDR4_fromProp(propSB);
     SBdata = CRISMdata(sbbasename,'');
     % [lblsb,hdrsb,imgsb] = crismCDRread_v2(SBdir,'SB',sbbasename);
     
@@ -219,9 +289,15 @@ for i=1:length(WAbasenameList)
     
     dir_cacheWAbase = joinPath(dir_cacheWA,wa_identfr);
     if ~exist(dir_cacheWAbase,'dir')
-        mkdir(dir_cacheWAbase);
+        [status] = mkdir(dir_cacheWAbase);
+        if status
+            chmod777(dir_cacheWAbase,verbose);
+        else
+            error('Failed to create %s',dir_cacheWAbase);
+        end
     end
-    [masterbase] = crmsab_const_libmasterbase(libname,opt,wa_identfr,method,retainRatio);
+    
+    %%
     fprintf('Starting %s, current time: %s\n',wabasename,datetime());
     if isempty(cList)
         cList = 1:WAdata.hdr.samples;
@@ -234,7 +310,8 @@ for i=1:length(WAbasenameList)
         if ~all(isnan(wvc))
             tc = tic;
             sbc = squeeze(imgsb(:,c,:))';
-            [cachefilepath] = crmsab_const_libcachefilepath(dir_cacheWAbase,masterbase,c);
+            [cachefname] = crmsab_const_libcachefname(libname,opt,wa_identfr,method,retainRatio,c);
+            [cachefilepath] = joinPath(dir_cacheWAbase,cachefname);
             
             if ~overwrite && exist(cachefilepath,'file')
                 fprintf('Skipping %s\n',cachefilepath);
@@ -242,7 +319,7 @@ for i=1:length(WAbasenameList)
                 flg = 1;
                 if exist(cachefilepath,'file')
                     if warn_overwrite
-                        flg = input(sprintf('Do you want to overwrite %s?(1[yes]/0[no])',cachefilepath));
+                        flg = doyouwantto('overwrite',sprintf('%s exists',cachefilepath));
                         if flg
                             fprintf('Overwriting %s\n',cachefilepath);
                         end
@@ -251,77 +328,65 @@ for i=1:length(WAbasenameList)
                 if flg
                     switch libname
                         case 'CRISMspclib'
-                            [Acrismspclib,infoAcrismspclib] = convCRISMspclib_v2(CRISMspclib,...
-                                libs_CRISMspclib,wvc,sbc,'RETAINRATIO',retainRatio,'XMULT',xmult);
+                            [Acrismspclib] = convCRISMspclib_v3(CRISMspclib,...
+                                libs_CRISMspclib,wvc,sbc,'RETAINRATIO',retainRatio); %,'XMULT',xmult);
                             option.method = method; option.retainRatio = retainRatio;
-                            save(cachefilepath,'Acrismspclib','infoAcrismspclib','option');
+                            save(cachefilepath,'Acrismspclib','option');
                         case 'RELAB'
-                            [Arelab,option] = libstruct_convoluter(spclib_relab_actv,wvc,...
+                            [Arelab,option] = libstruct_convoluter(infoArelab,wvc,...
                                                     methodbl,'SB',sbc,'retainRatio',retainRatio,'XMULT',xmult);
-                            infoArelab = spclib_relab_actv;
-                            save(cachefilepath,'Arelab','infoArelab','option');
+                            save(cachefilepath,'Arelab','option');
                         case 'USGSsplib'
-                            [Ausgs,option] = libstruct_convoluter(splibUSGS,wvc,methodbl,'XMULT',xmult);
-                            infoAusgs = splibUSGS;
-                            save(cachefilepath,'Ausgs','infoAusgs','option');
+                            [Ausgs,option] = libstruct_convoluter(infoAusgs,wvc,methodbl,'XMULT',xmult);
+                            save(cachefilepath,'Ausgs','option');
                         case 'CRISMTypeLib'
-                            [AcrismTypeLib,option] = libstruct_convoluter(crismTypeLib,wvc,methodbl,'XMULT',xmult);
-                            infoAcrismTypeLib = crismTypeLib;
-                            save(cachefilepath,'AcrismTypeLib','infoAcrismTypeLib','option');
+                            [AcrismTypeLib,option] = libstruct_convoluter(infoAcrismTypeLib,wvc,methodbl,'XMULT',xmult);
+                            save(cachefilepath,'AcrismTypeLib','option');
                         case 'abscoeffH2Oicelib_Mastrapa2009'
                             [AabscoeffMastrapa2009,option]...
-                                = libstruct_convoluter(abscoeffH2Oicelib_Mastrapa2009,wvc,...
+                                = libstruct_convoluter(infoMastrapa2009,wvc,...
                                 methodbl,'YFieldName','abscoeff','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult);
-                            infoMastrapa2009 = abscoeffH2Oicelib_Mastrapa2009;
-                            save(cachefilepath,'AabscoeffMastrapa2009','infoMastrapa2009','option');
+                            save(cachefilepath,'AabscoeffMastrapa2009','option');
                         case 'abscoeffH2Oicelib_Grundy1998'
                             [AabscoeffGrundy1998,option]...
-                                = libstruct_convoluter(abscoeffH2Oicelib_Grundy1998,wvc,...
+                                = libstruct_convoluter(infoGrundy1998,wvc,...
                                 methodbl,'YFieldName','abscoeff','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult);
-                            infoGrundy1998 = abscoeffH2Oicelib_Grundy1998;
-                            save(cachefilepath,'AabscoeffGrundy1998','infoGrundy1998','option');
+                            save(cachefilepath,'AabscoeffGrundy1998','option');
                         case 'abscoeffH2Oicelib_GhoSSTGrundy1998'
                             [AabscoeffGhoSSTGrundy1998,option]...
-                                = libstruct_convoluter(abscoeffH2Oicelib_GhoSSTGrundy1998,wvc,...
+                                = libstruct_convoluter(infoGhoSSTGrundy1998,wvc,...
                                 methodbl,'YFieldName','abscoeff','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult);
-                            infoGhoSSTGrundy1998 = abscoeffH2Oicelib_GhoSSTGrundy1998;
-                            save(cachefilepath,'AabscoeffGhoSSTGrundy1998','infoGhoSSTGrundy1998','option');
+                            save(cachefilepath,'AabscoeffGhoSSTGrundy1998','option');
                         case 'abscoeffH2Oicelib_Warren2008'
                             [AabscoeffWarren2008,option]...
-                                = libstruct_convoluter(abscoeffH2Oicelib_Warren2008,wvc,...
+                                = libstruct_convoluter(infoWarren2008,wvc,...
                                 methodbl,'YFieldName','abscoeff','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult);
-                            infoWarren2008 = abscoeffH2Oicelib_Warren2008;
-                            save(cachefilepath,'AabscoeffWarren2008','infoWarren2008','option');
+                            save(cachefilepath,'AabscoeffWarren2008','option');
                         case 'abscoeffCO2icelib_Hansen'
                             [AabscoeffHansen,option]...
-                                = libstruct_convoluter(abscoeffCO2icelib_Hansen,wvc,...
+                                = libstruct_convoluter(infoHansen,wvc,...
                                 methodbl,'YFieldName','abscoeff','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult);
-                            infoHansen = abscoeffCO2icelib_Hansen;
-                            save(cachefilepath,'AabscoeffHansen','infoHansen','option');
+                            save(cachefilepath,'AabscoeffHansen','option');
                         case 'absxsecH2Olib_HITRAN'
                             [AabsxsecH2Olib_HITRAN,option]...
-                                = libstruct_convoluter(absxsecH2Olib_HITRAN,wvc,...
+                                = libstruct_convoluter(infoabsxsecH2Olib_HITRAN,wvc,...
                                 methodbl,'YFieldName','xsec','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult,'Batch',1);
-                            infoabsxsecH2Olib_HITRAN = absxsecH2Olib_HITRAN;
-                            save(cachefilepath,'AabsxsecH2Olib_HITRAN','infoabsxsecH2Olib_HITRAN','option');
+                            save(cachefilepath,'AabsxsecH2Olib_HITRAN','option');
                         case 'absxsecCO2lib_HITRAN'
                             [AabsxsecCO2lib_HITRAN,option]...
-                                = libstruct_convoluter(absxsecCO2lib_HITRAN,wvc,...
+                                = libstruct_convoluter(infoabsxsecCO2lib_HITRAN,wvc,...
                                 methodbl,'YFieldName','xsec','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult,'Batch',1);
-                            infoabsxsecCO2lib_HITRAN = absxsecCO2lib_HITRAN;
-                            save(cachefilepath,'AabsxsecCO2lib_HITRAN','infoabsxsecCO2lib_HITRAN','option');
+                            save(cachefilepath,'AabsxsecCO2lib_HITRAN','option');
                         case 'absxsecCOlib_HITRAN'
                             [AabsxsecCOlib_HITRAN,option]...
-                                = libstruct_convoluter(absxsecCOlib_HITRAN,wvc,...
+                                = libstruct_convoluter(infoabsxsecCOlib_HITRAN,wvc,...
                                 methodbl,'YFieldName','xsec','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult,'Batch',1);
-                            infoabsxsecCOlib_HITRAN = absxsecCOlib_HITRAN;
-                            save(cachefilepath,'AabsxsecCOlib_HITRAN','infoabsxsecCOlib_HITRAN','option');
+                            save(cachefilepath,'AabsxsecCOlib_HITRAN','option');
                         case 'Q_H2Oicelib_Grundy1998'
                             [AQ_H2Oicelib_Grundy1998,option]...
-                                = libstruct_convoluter(Q_H2Oicelib_Grundy1998,wvc,...
+                                = libstruct_convoluter(infoQ_H2Oicelib_Grundy1998,wvc,...
                                 methodbl,'YFieldName','Q','SB',sbc,'retainRatio',retainRatio,'XMULT',xmult,'Batch',1);
-                            infoQ_H2Oicelib_Grundy1998 = Q_H2Oicelib_Grundy1998;
-                            save(cachefilepath,'AQ_H2Oicelib_Grundy1998','infoQ_H2Oicelib_Grundy1998','option');
+                            save(cachefilepath,'AQ_H2Oicelib_Grundy1998','option');
                         otherwise
                             error('lib %s is not defined',libname);
                     end

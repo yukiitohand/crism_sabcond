@@ -64,24 +64,19 @@ else
             case 'DIR_CACHE'
                 dir_cache = varargin{i+1};
             otherwise
-                % Hmmm, something wrong with the parameter string
-                error(['Unrecognized option: ''' varargin{i} '''']);
+                error('Unrecognized option: %s', varargin{i});
         end
     end
 end
 
-switch method
-    case 'interpCRISMspc'
-        methodbl = 1;
-    case 'interp1'
-        methodbl = 0;
-    otherwise
-        error('method %s is not valid. Choose "interpCRISMspc" or "interp1" (case sensitive).',method);
-end
-
-dir_cacheWA = joinPath(dir_cache,'WA',wabasename);
-[masterbase] = crmsab_const_libmasterbase(libname,opt,wabasename,method,retainRatio);
-[cachefilepath] = crmsab_const_libcachefilepath(dir_cacheWA,masterbase,c);
+% switch method
+%     case 'interpCRISMspc'
+%         methodbl = 1;
+%     case 'interp1'
+%         methodbl = 0;
+%     otherwise
+%         error('method %s is not valid. Choose "interpCRISMspc" or "interp1" (case sensitive).',method);
+% end
 
 switch libname
     case 'CRISMspclib'
@@ -111,22 +106,49 @@ switch libname
     case 'Q_H2Oicelib_Grundy1998'
         Alibname = 'AQ_H2Oicelib_Grundy1998'; infoAname = 'infoQ_H2Oicelib_Grundy1998';
     otherwise
-        error('lib %s is not defined',libname);
+        error([ ...
+            'lib %s is not defined. Please select from: \n'           , ...
+            '     CRISMspclib\n'                                      , ...
+            '     RELAB\n'                                            , ...
+            '     USGSsplib\n'                                        , ...
+            '     CRISMTypLib\n'                                      , ...
+            '     abscoeffH2Oicelib_Mastrapa2009\n'                   , ...
+            '     abscoeffH2Oicelib_Grundy1998\n'                     , ...
+            '     abscoeffH2Oicelib_GhoSSTGrundy1998\n'               , ...
+            '     abscoeffH2Oicelib_Warren2008\n'                     , ...
+            '     abscoeffCO2icelib_Hansen\n'                         , ...
+            '     absxsecH2Olib_HITRAN\n'                             , ...
+            '     absxsecCO2lib_HITRAN\n'                             , ...
+            '     absxsecCOlib_HITRAN\n'                              , ...
+            '     Q_H2Oicelib_Grundy1998\n'                           , ...
+            '(case sensitive)'                                          ...
+            ], ...
+            libname);
 end
+
+dir_cacheWA = joinPath(dir_cache,'WA',wabasename);
+[libcachefname]    = crmsab_const_libcachefname(libname,opt,wabasename,method,retainRatio,c);
+[libcachefilepath] = joinPath(dir_cacheWA,libcachefname);
 
 switch nargout
     case 1
-        data = load(cachefilepath,Alibname);
+        data = load(libcachefilepath,Alibname);
         Alib = data.(Alibname);
     case 2
-        data = load(cachefilepath,Alibname,infoAname);
+        data = load(libcachefilepath,Alibname);
         Alib = data.(Alibname);
+        [info_cachefname]    = crmsab_const_libcachefname_info(libname,opt);
+        [info_cachefilepath] = joinPath(dir_cache,info_cachefname);
+        data = load(info_cachefilepath,infoAname);
         infoA = data.(infoAname);
     case 3
-        data = load(cachefilepath,Alibname,infoAname,'option');
+        data = load(libcachefilepath,Alibname,'option');
         Alib = data.(Alibname);
-        infoA = data.(infoAname);
         option = data.option;
+        [info_cachefname]    = crmsab_const_libcachefname_info(libname,opt);
+        [info_cachefilepath] = joinPath(dir_cache,info_cachefname);
+        data = load(info_cachefilepath,infoAname);
+        infoA = data.(infoAname);
     otherwise
         error('The number of output arguments is invalid');
 end
