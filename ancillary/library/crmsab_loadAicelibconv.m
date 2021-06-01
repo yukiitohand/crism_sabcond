@@ -40,7 +40,7 @@ if ~overwrite && exist(Aicelibcachefilepath,'file')
         load(infoAicelibcachefilepath,'infoAicelib');
     end
 else
-    [Aicelib,infoAicelib] = wrapper_crism_icelib(opt,wa_identfr,c);
+    [Aicelib,infoAicelib] = crmsab_load_icelibconv_wrapper(opt,wa_identfr,c);
     % select the band option
     bands = crmsab_genBands(bands_opt);
     Aicelib= Aicelib(bands,:); 
