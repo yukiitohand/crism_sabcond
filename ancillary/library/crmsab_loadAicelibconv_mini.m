@@ -24,7 +24,7 @@ cntRmvl = 0;
 Aicelibdir = joinPath(dir_cache,'WA/',wa_identfr);
 Aicelibcachefname = crmsab_constAicelibcachefname(wa_identfr,opt,bands_opt,c,cntRmvl);
 Aicelibcachefilepath = joinPath(Aicelibdir,Aicelibcachefname);
-if ~overwrite && exist(Aicelibcachefilepath,'file')
+if exist(Aicelibcachefilepath,'file')
     load(Aicelibcachefilepath,'Aicelib');
     if nargout>1
         load(Aicelibcachefilepath,'valid_idx');
