@@ -75,6 +75,14 @@ switch opt_relab
         spclib_relab_actv = [opal gypsum hyd_silica spclib_relab_jess_exclusive];
     case 0
         spclib_relab_actv = []; % empty is added.
+    case 6
+        load('spclib_relab2018Dec31.mat','spclib_relab');
+        wv_strt = cell2mat([spclib_relab.wavelength_strt]);
+        wv_end = cell2mat([spclib_relab.wavelength_end]);
+        idx = and(wv_strt<900,wv_end>2800);
+        generalType1_list = {'mineral','Rock','Rocks','RockCoating','MineralPwdr','Coating','Regolith','Sediment','Soil','Ash'};
+        spclib_relab_wv = spclib_relab(idx);
+        spclib_relab_actv = searchby('generalType1',generalType1_list,spclib_relab_wv);        
     otherwise
         error('opt_relab %d is not defined',opt_relab);
 end

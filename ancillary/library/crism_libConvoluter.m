@@ -203,7 +203,6 @@ switch libname
             libname);
 end
 
-
 %%
 if ~exist(dir_cache,'dir')
     [status] = mkdir(dir_cache);
@@ -244,8 +243,8 @@ if ~exist(dir_cacheWA,'dir')
         error('Failed to create %s',dir_cacheWA);
     end
 end
-    
 
+dir_cacheWA = joinPath(dir_cache, 'WA/');
 if isempty(wabasename)
     [ propWAptr ] = crism_create_propCDR4basename( 'Acro','WA','BINNING',binning,'SENSOR_ID',sensor_id,'Version',vr);
     [~,wabasename,~] = crism_search_cdr_fromProp(propWAptr);

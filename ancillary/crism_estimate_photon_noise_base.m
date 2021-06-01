@@ -53,7 +53,8 @@ WA_m = WA_nm * (10.^(-9)); % [m] converting to meters
 d_km = lbl.SOLAR_DISTANCE.value;
 [ d_au ] = km2au( d_km );
 
-photon_cts = RDimg .* (A*sr*tsec).* WA_um_pitch ./ ((h_planck.*c_light)./WA_m) .* eta;
+% photon_cts = RDimg .* (A*sr*tsec).* WA_um_pitch ./ ((h_planck.*c_light)./WA_m) .* eta;
+photon_cts = (eta.*A*sr*tsec./ (h_planck.*c_light) ) .*  (WA_um_pitch.*WA_m) .* RDimg;
 
 photon_cts(photon_cts<0) = NaN;
 

@@ -11,6 +11,10 @@ switch bands_opt
         bands = [4:252];
     case 6
         bands = [4:250];
+    case 7
+        bands = [1:250];
+    case 8
+        bands = [1:252];
     otherwise
         error('Option %d is not defined yet');
 end

@@ -62,6 +62,21 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'BANDS_BIAS_MAD': array, [B x 1]
 %       median absolute deviation of calibration bias for each band
 %       (default) zeros(B,1)
+%   'T_UPDATE: scalar,
+%       how many times t is updated
+%       (default) inf (update as many as nIter)
+%   'LOGT_NEG': boolean,
+%       whether or not to force logT to be negative
+%       (default) false
+%   'LOGT_RELAX': boolean,
+%       whether or not to relax logT update with the residuals
+%       (default) false
+%   'OPT_BANDS_IGNORE_INIT': string, {'none','ltn035'}
+%       option for selecting bands to be ignored.
+%       (default) 'none'
+%   (below is under development)
+%   'BANDS_IGNORE_INIT':boolean, [B x 1 x S]
+%       bands to be ignored in the first iteration
 %  ## HUWACB PARAMETERS #--------------------------------------------------
 %   'LAMBDA_A': scalar,
 %        trade-off parameter, controling sparsity of the coefficients of Alib
@@ -146,6 +161,12 @@ th_badspc = 0.8;
 lambda_update_rule = 'L1SUM';
 ffc_mode  = false;
 bands_bias_mad = zeros(B,1);
+t_update = inf;
+logT_neg = false;
+logt_relax = false;
+opt_bands_ignore_init = 'none';
+bands_ignore_init = false(B,1,S);
+bands_logt_nonlinear = false(B,1,S);
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = 0;
 stdl1_ifdf  = [];
@@ -155,7 +176,7 @@ lbl         = [];
 % ## HUWACB PARAMETERS #---------------------------------------------------
 lambda_a       = 0.01;
 lambda_a_ice   = 0;
-maxiter_huwacb = int32(200);
+maxiter_huwacb = int32(1000);
 tol_huwacb     = 1e-4;
 verbose_huwacb = 'no';
 debug_huwacb   = false;
@@ -169,6 +190,7 @@ gpu       = true;
 batch     = S>1;
 precision = 'double';
 is_debug  = false;
+debug_l_plot = 1;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -188,6 +210,18 @@ else
                 ffc_mode = varargin{i+1};
             case 'BANDS_BIAS_MAD'
                 bands_bias_mad = varargin{i+1};
+            case 'T_UPDATE'
+                t_update = varargin{i+1};
+            case 'LOGT_NEG'
+                logT_neg = varargin{i+1};
+            case 'LOGT_RELAX'
+                logt_relax = varargin{i+1};
+            case 'OPT_BANDS_IGNORE_INIT'
+                opt_bands_ignore_init = varargin{i+1};
+            case 'BANDS_IGNORE_INIT'
+                bands_ignore_init = varargin{i+1};
+            case 'BANDS_LOGT_NONLINEAR'
+                bands_logt_nonlinear = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -229,6 +263,8 @@ else
                 verbose_lad = varargin{i+1};
             case 'DEBUG_LAD'
                 debug_lad = varargin{i+1};
+            case 'DEBUG_L_PLOT'
+                debug_l_plot = varargin{i+1};
                 
             % ## PROCESSING PARAMETERS #-----------------------------------
             case 'GPU'
@@ -380,20 +416,35 @@ switch weight_mode
             mYif1 = mYif'*Yif/norm(mYif,2)^2;
             Ymdl = mYif*mYif1;
         end
+        
         RDimg = crism_if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         %
-        % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
+        % % lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad).*(Ymdl)/(B*20);
         lambda_r = 1./(stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)/(B*20);
         lambda_r = lambda_r .* exp(logT);
-        lambda_r(logYif_isnan_ori) = 0;
+        % lambda_r = 1./((stdl1_ifdf+photon_noise_mad_stdif).*(Ymdl)+abs(logT).^2*1e-4)/(B*100);
+        logYif_isnan = logYif_isnan_ori;
+        logYif_isnan = or(logYif_isnan,bands_ignore_init); % logYif_isnan((169:185-3),:) = true;
+        % logYif_isnan = or(logYif_isnan,bands_logt_nonlinear);
+        switch upper(opt_bands_ignore_init)
+            case 'NONE'
+                % no processing
+            case 'LTN035'
+                nlt = logT<-0.35;
+                logYif_isnan = ( logYif_isnan + nlt ) > 0;
+            otherwise
+                error('Undefined OPT_BANDS_IGNORE_INIT %s',opt_bands_ignore_init);
+        end
+        % lambda_r = lambda_r .* exp(logT).^2./sum(exp(logT).^2);
+        lambda_r(logYif_isnan) = 0;
         bp_bool_ori = all(logYif_isnan_ori,2);
 end
 
 if ffc_mode
 else
-    lambda_a_2(idxAlogT,:,:) = 0.*ones(Ntc,L,S,precision,gpu_varargin{:});
+    lambda_a_2(idxAlogT,:,:) = 0.0*ones(Ntc,L,S,precision,gpu_varargin{:});
 end
 lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
 lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
@@ -401,6 +452,7 @@ lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 % 
 % lambda_c_ori = bands_bias_mad./Ymdl;
 lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad)./(Ymdl);
+% lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif)./(Ymdl);
 lambda_c = lambda_c_ori;
 lambda_c(logYif_isnan) = inf;
 lambda_c([1,Nc],:,:) = 0; % safeguard
@@ -438,7 +490,7 @@ else
         [  X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
         = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
         'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'YNORMALIZE',y_normalize,.....
-        'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
+        'tol',1e-5,'maxiter',300,'verbose','no',...
         'precision',precision,'gpu',gpu,'Concavebase',C,'debug',debug_huwacb);
     end
 end
@@ -474,15 +526,15 @@ if is_debug
             0.7500         0    0.7500;
             0.7500    0.7500         0;
             0.2500    0.2500    0.2500];
-    liList = 50;
+    liList = debug_l_plot;
     % Get initial transmission spectrum
     if ffc_mode
         Xtc = ones(1,L,S,precision,gpu_varargin{:});
     else
         Xtc = sum(X(idxAlogT,:,:),1);
     end
-    logYif_cor_test = logYif - logT * Xtc;
-    ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+    logYif_cor_test = logYif - logT * Xtc - A(:,idxAice)*X(idxAice,:);
+    ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
     bg = C*Z;
     ygood_1nan = convertBoolTo1nan(~logYif_isnan);
     ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -495,22 +547,22 @@ if is_debug
     figure; ax_res = subplot(1,1,1); hold(ax_res,'off');movegui(gcf,'northeast');
     
     for li=liList
-        plot(ax_spc,exp(logYif(:,li)),'.-','Color',[0.5 0.5 0.5],...
+        plot(ax_spc,WA,exp(logYif(:,li)),'.-','Color',[0.5 0.5 0.5],...
             'DisplayName','yif');
         hold(ax_spc,'on');
-        plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(1,:),...
+        plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(1,:),...
             'DisplayName','cor iter=0 before t upd');
         hold(ax_spc,'on');
-        plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(2,:),...
+        plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(2,:),...
             'DisplayName','cor good iter=0  before t upd');
-        plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'o','Color',cols(2,:),...
+        plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'o','Color',cols(2,:),...
             'DisplayName','cor bad iter=0  before t upd');
-        plot(ax_spc,exp(ymodel(:,li)),'-','Color',cols(2,:),...
+        plot(ax_spc,WA,exp(ymodel(:,li)),'-','Color',cols(2,:),...
          'DisplayName','cor model iter=0 before t upd');
-        plot(ax_spc,exp(bg(:,li)),'-','Color',cols(2,:),...
+        plot(ax_spc,WA,exp(bg(:,li)),'-','Color',cols(2,:),...
          'DisplayName','cor bg iter=0 before t upd');
 
-        plot(ax_tr,logT,'.-','Color',cols(1,:),...
+        plot(ax_tr,WA,logT,'.-','Color',cols(1,:),...
             'DisplayName','t est iter=0 before t upd');
 
         RR_bad_1nan = RR .* logYif_cor_bad_1nan;
@@ -570,7 +622,7 @@ switch weight_mode
         
         RDimg = crism_if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
         mad_rr_band_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
         res_exp = Yif - Ymdl;
         mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
@@ -602,9 +654,9 @@ if is_debug
 
     for li=liList
         hold(ax_spc,'on');
-        plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(2,:),...
+        plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(2,:),...
             'DisplayName','cor good iter=0  before t upd');
-        plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(2,:),...
+        plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(2,:),...
             'DisplayName','cor bad iter=0  before t upd');
 
         RR_bad_1nan = RR .* logYif_cor_bad_1nan;
@@ -631,22 +683,36 @@ else
     Xtc = sum(X(idxAlogT,:,:),1);
 end
 
-if batch
-    [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val,Kcond]...
-           = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-                'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
-                'verbose',verbose_lad,'precision',precision);
+if t_update < 1
+    logt_est = logT;
 else
-    [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
-    = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-             'lambda_r',permute(lambda_r,[2,1,3]),...
-             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
-             'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
-end
-%
-logt_est = permute(logt_est,[2,1,3]);
+    if batch
+        [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val,Kcond]...
+               = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
+                    'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
+                    'verbose',verbose_lad,'precision',precision);
+    else
+        [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
+        = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
+                 'lambda_r',permute(lambda_r,[2,1,3]),...
+                 'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
+                 'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
+    end
+    %
+    logt_est = permute(logt_est,[2,1,3]);
+    
+    if logt_relax
+        dlogt = logt_est - logT;
+        dlogt = soft_thresh(dlogt,mad_log_band/norminv(0.75)./sqrt(sum(~logYif_isnan,2)));
+        logt_est = logT + dlogt;
+    end
 
-logt_est(bp_est_bool) = logT(bp_est_bool);
+    logt_est(bp_est_bool) = logT(bp_est_bool);
+end
+
+if logT_neg
+    logt_est(logt_est>0) = 0;
+end
 
 % relaxation
 % logt_est = logT + max(abs(logt_est-logT)./mad_log_band,0) .* logt_est;
@@ -671,9 +737,11 @@ switch weight_mode
                 Ymdl = exp(log(Ymdl) - logT*X(idxAlogT,:,:) + logt_est*Xtc);
             end
         end
+        
         RDimg = crism_if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
+        
         mad_rr_theor = stdl1_ifdf+photon_noise_mad_stdif;
         res_exp = Yif - Ymdl;
         % mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,...
@@ -681,13 +749,18 @@ switch weight_mode
         mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,...
             'NOutliers',10,'data_center',0);
         
-        % lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad).*(Ymdl)./(B*20);
+        % % lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad).*(Ymdl)./(B*20);
         lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)).*(Ymdl)./(B*20);
+        % lambda_r = 1./(max(mad_rr_theor,mad_rr_band_prac)).*(Ymdl)./(B*100);
         
         if ffc_mode
             res_exp_scaled = res_exp./exp(logT);
         else
-            res_exp_scaled = res_exp./exp(logt_est*X(idxAlogT,:));
+            if batch
+                res_exp_scaled = res_exp./exp(pagefun(@mtimes,logt_est,X(idxAlogT,:,:)));
+            else
+                res_exp_scaled = res_exp./exp(logt_est*X(idxAlogT,:));
+            end
         end
         logYif_isnan_spk = abs(res_exp_scaled)>0.003; % conservative choice
         
@@ -698,20 +771,20 @@ switch weight_mode
 end
 
 if is_debug
-    logYif_cor_test = logYif - logt_est * Xtc;
+    logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
     logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
     logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
     for li=liList
-        plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(3,:),...
+        plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(3,:),...
             'DisplayName','cor iter=0 after t upd');
         hold(ax_spc,'on');
-        plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(4,:),...
+        plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(4,:),...
             'DisplayName','cor good iter=0  after t upd');
-        plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(4,:),...
+        plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(4,:),...
             'DisplayName','cor bad iter=0  after t upd');
 
-        plot(ax_tr,logt_est,'.-','Color',cols(3,:),...
+        plot(ax_tr,WA,logt_est,'.-','Color',cols(3,:),...
             'DisplayName','t est iter=0 after t upd');
 
         RR_bad_1nan = RR .* logYif_cor_bad_1nan;
@@ -721,6 +794,7 @@ if is_debug
         plot(ax_res,RR_bad_1nan,'x'); 
     end
     drawnow;
+    keyboard;
 end
 
 
@@ -773,7 +847,7 @@ else
 end
 lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
 lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
-cff = resNewNrm/resNrm;
+cff = resNewNrm./resNrm;
 % lambda_c = lambda_c.* (resNewNrm ./ resNrm);
 % lambda_c_ori = lambda_c_ori.* (resNewNrm ./ resNrm);
 
@@ -786,7 +860,8 @@ cff = resNewNrm/resNrm;
 logYif_isnan_c = logYif_isnan;
 logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:),...
     logYif_isnan_c([1,Nc],:,:));
-lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad)./(Ymdl) .* cff;
+% lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad)./(Ymdl) .* cff;
+lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac))./(Ymdl) .* cff;
 % lambda_c = lambda_c_ori;
 lambda_c = lambda_c_ori;
 lambda_c(logYif_isnan_c) = inf;
@@ -887,8 +962,8 @@ for n=2:nIter
         else
             Xtc = sum(X(idxAlogT,:,:),1);
         end
-        logYif_cor_test = logYif - logt_est * Xtc;
-        ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
         bg = C*Z;
         ygood_1nan = convertBoolTo1nan(~logYif_isnan);
         ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -896,14 +971,14 @@ for n=2:nIter
         logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
         for li=liList
-            plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(5,:),...
+            plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(5,:),...
                 'DisplayName',sprintf('cor iter=%d before t upd',n));
             hold(ax_spc,'on');
-            plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'o','Color',cols(6,:),...
+            plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'o','Color',cols(6,:),...
                 'DisplayName',sprintf('cor bad iter=%d  before t upd',n));
-            plot(ax_spc,exp(ymodel(:,li)),'-','Color',cols(6,:),...
+            plot(ax_spc,WA,exp(ymodel(:,li)),'-','Color',cols(6,:),...
              'DisplayName',sprintf('cor model iter=%d before t upd',n));
-            plot(ax_spc,exp(bg(:,li)),'-','Color',cols(6,:),...
+            plot(ax_spc,WA,exp(bg(:,li)),'-','Color',cols(6,:),...
              'DisplayName',sprintf('cor bg iter=%d before t upd',n));
 
             RR_bad_1nan = RR .* logYif_cor_bad_1nan;
@@ -939,9 +1014,11 @@ for n=2:nIter
                 end
             end
             
+            
             RDimg = crism_if2rd(Ymdl,SFimg,lbl);
             [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
-                                        RDimg,WA,WA_um_pitch,lbl,SFimg);
+                                        RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
+            
             res_exp = Yif - Ymdl;
             mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
             mad_rr_band = max(mad_rr_band_theor,mad_rr_band_prac);
@@ -956,7 +1033,11 @@ for n=2:nIter
             if ffc_mode
                 res_exp_scaled = res_exp./exp(logt_est);
             else
-                res_exp_scaled = res_exp./(exp(A(:,idxAlogT))*X(idxAlogT,:));
+                if batch
+                    res_exp_scaled = res_exp./(exp(pagefun(@mtimes,A(:,idxAlogT,:),X(idxAlogT,:,:))));
+                else
+                    res_exp_scaled = res_exp./(exp(A(:,idxAlogT))*X(idxAlogT,:));
+                end
             end
             logYif_isnan_spk = abs(res_exp_scaled)>0.0015;
             
@@ -981,9 +1062,9 @@ for n=2:nIter
 
         for li=liList
             hold(ax_spc,'on');
-            plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(6,:),...
+            plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(6,:),...
                 'DisplayName',sprintf('cor good iter=%d  before t upd',n));
-            plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(6,:),...
+            plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(6,:),...
                 'DisplayName',sprintf('cor bad iter=%d  before t upd',n));
             
             
@@ -1021,21 +1102,35 @@ for n=2:nIter
         end
         Xtc = X(idxAlogT,:,:);
     end
-    if batch
-        [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
-           = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...% 'rho',rho_lad,'Rhov',Rhov_lad,...
-                'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
-                'verbose',verbose_lad,'precision',precision,'Kcond',Kcond);
-    else
-        [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
-            = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
-             'lambda_r',permute(lambda_r,[2,1,3]),...
-             'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
-             'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
+    if n <= t_update
+        if batch
+            [logt_est,r_lad,d_lad,rho_lad,Rhov_lad,~,~,cost_val]...
+               = lad_admm_gat_b_batch(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...% 'rho',rho_lad,'Rhov',Rhov_lad,...
+                    'lambda_r',permute(lambda_r,[2,1,3]),'tol',tol_lad,'maxiter',maxiter_lad,...
+                    'verbose',verbose_lad,'precision',precision,'Kcond',Kcond);
+        else
+            [logt_est,~,~,rho_lad,Rhov_lad,~,~,cost_val]...
+                = lad_admm_gat_b(permute(Xtc,[2,1,3]), permute(RR,[2,1,3]),...
+                 'lambda_r',permute(lambda_r,[2,1,3]),...
+                 'tol',tol_lad,'maxiter',maxiter_lad,'verbose',verbose_lad,...
+                 'PRECISION',precision,'gpu',gpu,'debug',debug_lad);
+
+        end
+        logt_est = permute(logt_est,[2,1,3]);
         
+        if logt_relax
+            dlogt = logt_est - A(:,idxAlogT,:);
+            dlogt = soft_thresh(dlogt,mad_log_band/norminv(0.75)./sqrt(sum(~logYif_isnan,2)));
+            logt_est = A(:,idxAlogT,:) + dlogt;
+        end
+        
+        logt_est(bp_est_bool) = logT(bp_est_bool);
     end
-    logt_est = permute(logt_est,[2,1,3]);
-    logt_est(bp_est_bool) = logT(bp_est_bool);
+    
+    if logT_neg
+        logt_est(logt_est>0) = 0;
+    end
+    
     if batch
         RR = RR - pagefun(@mtimes,logt_est,Xtc);
     else
@@ -1043,20 +1138,20 @@ for n=2:nIter
     end
     
     if is_debug
-        logYif_cor_test = logYif - logt_est * Xtc;
+        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
         logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
         logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
         for li=liList
-            plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(7,:),...
+            plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(7,:),...
                 'DisplayName',sprintf('cor iter=%d after t upd',n));
             hold(ax_spc,'on');
-            plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(8,:),...
+            plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(8,:),...
                 'DisplayName',sprintf('cor good iter=%d  after t upd',n));
-            plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(8,:),...
+            plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(8,:),...
                 'DisplayName',sprintf('cor bad iter=%d  after t upd',n));
 
-            plot(ax_tr,logt_est,'.-','Color',cols(7,:),...
+            plot(ax_tr,WA,logt_est,'.-','Color',cols(7,:),...
                 'DisplayName',sprintf('t est iter=%d after t upd',n));
 
             RR_bad_1nan = RR .* logYif_cor_bad_1nan;
@@ -1066,6 +1161,7 @@ for n=2:nIter
             plot(ax_res,RR_bad_1nan,'x'); 
         end
         drawnow;
+        keyboard;
     end
     
     switch upper(lambda_update_rule)
@@ -1092,12 +1188,13 @@ for n=2:nIter
     end
     lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
     lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
-    cff = cff .* resNewNrm/resNrm;
+    cff = cff .* resNewNrm./resNrm;
     
     logYif_isnan_c = logYif_isnan;
     logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:),...
         logYif_isnan_c([1,Nc],:,:));
-    lambda_c_ori = (mad_expected+bands_bias_mad)./(Ymdl) .* cff;
+    % lambda_c_ori = (mad_expected+bands_bias_mad)./(Ymdl) .* cff;
+    lambda_c_ori = (mad_expected)./(Ymdl) .* cff;
     % lambda_c = lambda_c_ori;
     lambda_c = lambda_c_ori;
     lambda_c(logYif_isnan_c) = inf;
@@ -1151,8 +1248,8 @@ if is_debug
     else
         Xtc = sum(X(idxAlogT,:,:),1);
     end
-    logYif_cor_test = logYif - logt_est * Xtc;
-    ymodel = A(:,idxAlib)*X(idxAlib,:) + A(:,idxAice)*X(idxAice,:) + C*Z;
+    logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+    ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
     bg = C*Z;
     ygood_1nan = convertBoolTo1nan(~logYif_isnan);
     ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -1160,16 +1257,16 @@ if is_debug
     logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
     for li=liList
-        plot(ax_spc,exp(logYif_cor_test(:,li)),'.-','Color',cols(9,:),...
+        plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(9,:),...
             'DisplayName','cor out');
         hold(ax_spc,'on');
-        plot(ax_spc,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(10,:),...
+        plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(10,:),...
             'DisplayName','cor good out');
-        plot(ax_spc,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(10,:),...
+        plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(10,:),...
             'DisplayName','cor bad out');
-        plot(ax_spc,exp(ymodel(:,li)),'-','Color',cols(10,:),...
+        plot(ax_spc,WA,exp(ymodel(:,li)),'-','Color',cols(10,:),...
             'DisplayName','cor model out');
-        plot(ax_spc,exp(bg(:,li)),'-','Color',cols(10,:),...
+        plot(ax_spc,WA,exp(bg(:,li)),'-','Color',cols(10,:),...
             'DisplayName','cor bg out');
 
         RR_bad_1nan = RR .* logYif_cor_bad_1nan;
@@ -1179,6 +1276,7 @@ if is_debug
         plot(ax_res,RR_bad_1nan,'x'); 
     end
     drawnow;
+    keyboard;
 end
 
 
