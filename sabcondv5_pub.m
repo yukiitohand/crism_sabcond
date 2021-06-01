@@ -1,5 +1,5 @@
-function [out] = sabcondv3_pub(obs_id,varargin)
-% [out] = sabcondv3_pub(obs_id,varargin)
+function [out] = sabcondv5_pub(obs_id,varargin)
+% [out] = sabcondv5_pub(obs_id,varargin)
 %   This function performs simultaneous de-noising and atmospheric
 %   correction of CRISM data. For any technical information, refer the
 %   following paper:

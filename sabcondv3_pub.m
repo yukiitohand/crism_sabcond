@@ -1,5 +1,5 @@
-function [out] = sabcondv3_pub_legacy(obs_id,varargin)
-% [out] = sabcondv3_pub_legacy(obs_id,varargin)
+function [out] = sabcondv3_pub(obs_id,varargin)
+% [out] = sabcondv3_pub(obs_id,varargin)
 %   This function diverged from "sabcondv3_pub.m" of the commit 912fc91.
 %   This function performs simultaneous de-noising and atmospheric
 %   correction of CRISM data. For any technical information, refer the
