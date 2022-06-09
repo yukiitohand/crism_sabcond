@@ -1,7 +1,7 @@
 function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc]...
-    = sabcondc_v3l1_gpu_batch_tagv1(logYif,WA,Alib,logT,BP,varargin)
+    = sabcondc_v3l1_gpu_batch_tagv1_debug(logYif,WA,Alib,logT,BP,varargin)
 % [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc]...
-%     = sabcondc_v3l1_gpu_batch_tagv1(logYif,WA,Alib,logT,BP,varargin)
+%     = sabcondc_v3l1_gpu_batch_tagv1_debug(logYif,WA,Alib,logT,BP,varargin)
 %
 % Perform sabcondc_v3l1 with Algorithm 2 (bad entries are exactly ignored).
 % BATCH mode is also supported (GPU is needed). BATCH mode is activated by
@@ -159,6 +159,9 @@ debug_lad   = false;
 gpu       = true;
 batch     = S>1;
 precision = 'double';
+% ## DEBUG OPTIONS #-------------------------------------------------------
+is_debug     = false;
+debug_l_plot = 1;
 
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
@@ -224,12 +227,20 @@ else
                 batch = varargin{i+1};
             case 'PRECISION'
                 precision = varargin{i+1};
+
+            % ## DEBUG OPTIONS #-------------------------------------------
+            case 'DEBUG'
+                is_debug = varargin{i+1};
+            case 'DEBUG_L_PLOT'
+                debug_l_plot = varargin{i+1};
+
             otherwise
                 error('Unrecognized option: %s',varargin{i});
         end
     end
 end
 
+if is_debug, keyboard; end
 
 switch weight_mode
     case 0
@@ -418,6 +429,72 @@ else
     RR = logYif - A*X - C*Z;
 end
 
+%%
+if is_debug
+    cols = [     0    0.4470    0.7410;
+            0.8500    0.3250    0.0980;
+            0.9290    0.6940    0.1250;
+            0.4940    0.1840    0.5560;
+            0.4660    0.6740    0.1880;
+            0.3010    0.7450    0.9330;
+            0.6350    0.0780    0.1840;
+                 0         0    1.0000;
+                 0    0.5000         0;
+            1.0000         0         0;
+                 0    0.7500    0.7500;
+            0.7500         0    0.7500;
+            0.7500    0.7500         0;
+            0.2500    0.2500    0.2500];
+    liList = debug_l_plot;
+    % Get initial transmission spectrum
+    if ffc_mode
+        Xtc = ones(1,L,S,precision,gpu_varargin{:});
+    else
+        Xtc = X(idxAlogT,:,:);
+    end
+    logYif_cor_test = logYif - logT * X(idxAlogT,:,:) - A(:,idxAice)*X(idxAice,:);
+    ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+    bg = C*Z;
+    ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+    ybad_1nan = convertBoolTo1nan(logYif_isnan);
+    logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+    logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+    
+    figure; ax_tr = subplot(1,1,1); movegui(gcf,'northwest');
+    hold(ax_tr,'on'); 
+    figure; ax_spc = subplot(1,1,1); hold(ax_spc,'off');movegui(gcf,'north');
+    figure; ax_res = subplot(1,1,1); hold(ax_res,'off');movegui(gcf,'northeast');
+    
+    for li=liList
+        plot(ax_spc,WA,exp(logYif(:,li)),'.-','Color',[0.5 0.5 0.5],...
+            'DisplayName','yif');
+        hold(ax_spc,'on');
+        plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(1,:),...
+            'DisplayName','cor iter=0 before t upd');
+        hold(ax_spc,'on');
+        plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(2,:),...
+            'DisplayName','cor good iter=0  before t upd');
+        plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'o','Color',cols(2,:),...
+            'DisplayName','cor bad iter=0  before t upd');
+        plot(ax_spc,WA,exp(ymodel(:,li)),'-','Color',cols(2,:),...
+         'DisplayName','cor model iter=0 before t upd');
+        plot(ax_spc,WA,exp(bg(:,li)),'-','Color',cols(2,:),...
+         'DisplayName','cor bg iter=0 before t upd');
+
+        plot(ax_tr,WA,mean(logT*(Xtc./sum(Xtc,1)),2),'.-','Color',cols(1,:),...
+            'DisplayName','t est iter=0 before t upd');
+
+        RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+        hold(ax_res,'off');
+        plot(ax_res,RR);
+        hold(ax_res,'on');
+        plot(ax_res,RR_bad_1nan,'x'); 
+    end
+    drawnow;
+end
+
+%%
+
 % ## denoising ##----------------------------------------------------------
 switch weight_mode
     case 0
@@ -477,6 +554,31 @@ end
 
 lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
 lambda_c([1,Nc],:,:) = 0; % safeguard
+
+%%
+
+if is_debug
+    ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+    ybad_1nan = convertBoolTo1nan(logYif_isnan);
+    logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+    logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+    for li=liList
+        hold(ax_spc,'on');
+        plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(2,:),...
+            'DisplayName','cor good iter=0  before t upd');
+        plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(2,:),...
+            'DisplayName','cor bad iter=0  before t upd');
+
+        RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+        hold(ax_res,'off');
+        plot(ax_res,RR);
+        hold(ax_res,'on');
+        plot(ax_res,RR_bad_1nan,'x'); 
+    end
+    drawnow;
+end
+%%
 
 %--------------------------------------------------------------------------
 
@@ -541,6 +643,34 @@ switch weight_mode
 end
 
 resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
+
+%%
+if is_debug
+    logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+    logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+    logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+    for li=liList
+        plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(3,:),...
+            'DisplayName','cor iter=0 after t upd');
+        hold(ax_spc,'on');
+        plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(4,:),...
+            'DisplayName','cor good iter=0  after t upd');
+        plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(4,:),...
+            'DisplayName','cor bad iter=0  after t upd');
+
+        plot(ax_tr,WA,logt_est,'.-','Color',cols(3,:),...
+            'DisplayName','t est iter=0 after t upd');
+
+        RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+        hold(ax_res,'off');
+        plot(ax_res,RR);
+        hold(ax_res,'on');
+        plot(ax_res,RR_bad_1nan,'x'); 
+    end
+    drawnow;
+    % keyboard;
+end
 
 %%
 %-------------------------------------------------------------------------%
@@ -668,7 +798,44 @@ for n=2:nIter
     else
         RR = logYif - A*X - C*Z;
     end
+
+    %%
+    if is_debug
+        if ffc_mode
+            Xtc = ones(1,L,S,precision,gpu_varargin{:});
+        else
+            Xtc = sum(X(idxAlogT,:,:),1);
+        end
+        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+        bg = C*Z;
+        ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+        ybad_1nan = convertBoolTo1nan(logYif_isnan);
+        logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+        logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+        for li=liList
+            plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(5,:),...
+                'DisplayName',sprintf('cor iter=%d before t upd',n));
+            hold(ax_spc,'on');
+            plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'o','Color',cols(6,:),...
+                'DisplayName',sprintf('cor bad iter=%d  before t upd',n));
+            plot(ax_spc,WA,exp(ymodel(:,li)),'-','Color',cols(6,:),...
+             'DisplayName',sprintf('cor model iter=%d before t upd',n));
+            plot(ax_spc,WA,exp(bg(:,li)),'-','Color',cols(6,:),...
+             'DisplayName',sprintf('cor bg iter=%d before t upd',n));
+
+            RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+            hold(ax_res,'off');
+            plot(ax_res,RR);
+            hold(ax_res,'on');
+            plot(ax_res,RR_bad_1nan,'x'); 
+        end
+        
+        drawnow;
+    end
     
+    %%
     % ## denoising ##------------------------------------------------------
     switch weight_mode
         case 0
@@ -723,6 +890,31 @@ for n=2:nIter
     lambda_c(logYif_isnan) = inf; lambda_c(~logYif_isnan) = 0;
     lambda_c([1,Nc],:,:) = 0; % safeguard
     
+    %%
+    if is_debug
+        ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+        ybad_1nan = convertBoolTo1nan(logYif_isnan);
+        logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+        logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+        for li=liList
+            hold(ax_spc,'on');
+            plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(6,:),...
+                'DisplayName',sprintf('cor good iter=%d  before t upd',n));
+            plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(6,:),...
+                'DisplayName',sprintf('cor bad iter=%d  before t upd',n));
+            
+            
+            RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+            hold(ax_res,'off');
+            plot(ax_res,RR);
+            hold(ax_res,'on');
+            plot(ax_res,RR_bad_1nan,'x'); 
+        end
+        drawnow;
+    end
+    %%
+    
     
     resNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
@@ -757,6 +949,34 @@ for n=2:nIter
     else
         RR = RR - logt_est*Xtc;
     end
+
+    if is_debug
+        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+        logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+        logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+        for li=liList
+            plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(7,:),...
+                'DisplayName',sprintf('cor iter=%d after t upd',n));
+            hold(ax_spc,'on');
+            plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(8,:),...
+                'DisplayName',sprintf('cor good iter=%d  after t upd',n));
+            plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(8,:),...
+                'DisplayName',sprintf('cor bad iter=%d  after t upd',n));
+
+            plot(ax_tr,WA,logt_est,'.-','Color',cols(7,:),...
+                'DisplayName',sprintf('t est iter=%d after t upd',n));
+
+            RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+            hold(ax_res,'off');
+            plot(ax_res,RR);
+            hold(ax_res,'on');
+            plot(ax_res,RR_bad_1nan,'x'); 
+        end
+        drawnow;
+        % keyboard;
+    end
+
     resNewNrm = nansum(abs(lambda_r .* RR),[1,2]);
     
     % do we need to update lambda here? not sure.
@@ -815,6 +1035,43 @@ else
             'precision',precision,'gpu',gpu,'Concavebase',C,...
             'debug',debug_huwacb,'YNORMALIZE',y_normalize);
     end
+end
+
+if is_debug
+    if ffc_mode
+        Xtc = ones(1,L,S,precision,gpu_varargin{:});
+    else
+        Xtc = sum(X(idxAlogT,:,:),1);
+    end
+    logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+    ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+    bg = C*Z;
+    ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+    ybad_1nan = convertBoolTo1nan(logYif_isnan);
+    logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
+    logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+    for li=liList
+        plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(9,:),...
+            'DisplayName','cor out');
+        hold(ax_spc,'on');
+        plot(ax_spc,WA,exp(logYif_cor_1nan(:,li)),'.-','Color',cols(10,:),...
+            'DisplayName','cor good out');
+        plot(ax_spc,WA,exp(logYif_cor_bad_1nan(:,li)),'x','Color',cols(10,:),...
+            'DisplayName','cor bad out');
+        plot(ax_spc,WA,exp(ymodel(:,li)),'-','Color',cols(10,:),...
+            'DisplayName','cor model out');
+        plot(ax_spc,WA,exp(bg(:,li)),'-','Color',cols(10,:),...
+            'DisplayName','cor bg out');
+
+        RR_bad_1nan = RR .* logYif_cor_bad_1nan;
+        hold(ax_res,'off');
+        plot(ax_res,RR);
+        hold(ax_res,'on');
+        plot(ax_res,RR_bad_1nan,'x'); 
+    end
+    drawnow;
+    keyboard;
 end
 
 if ffc_mode     
