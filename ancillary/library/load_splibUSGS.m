@@ -77,6 +77,14 @@ switch opt_splibUSGS
         splib_usgs_actv = searchby('irecno',irecnoList,splib06a);
         [splib_usgs_actv.spclib] = deal('USGS splib06a');
         [splib_usgs_actv.cumindex] = deal(1:length(splib_usgs_actv));
+    case 7
+        % only water ice
+        load('splib06a.mat','splib06a');
+        % irecno: 26841,  'H2O-Ice GDS136 77K           W1R1Ba AREF'
+        irecnoList = [26841];
+        splib_usgs_actv = searchby('irecno',irecnoList,splib06a);
+        [splib_usgs_actv.spclib] = deal('USGS splib06a');
+        [splib_usgs_actv.cumindex] = deal(1:length(splib_usgs_actv));
     otherwise
         error('opt_splibUSGS %d is not defined',opt_splibUSGS);
 end

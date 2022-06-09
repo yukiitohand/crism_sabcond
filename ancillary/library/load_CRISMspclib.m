@@ -1,6 +1,9 @@
 function [CRISMspclib,libs_CRISMspclib] = load_CRISMspclib(opt_CRISMspclib)
     % crism spectral library
     switch opt_CRISMspclib
+        case 0
+            % nothing
+            [CRISMspclib] = [];
         case 1
             % mineral + rocks
             [CRISMspclib] = readCRISMspclib();

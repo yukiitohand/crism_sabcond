@@ -39,6 +39,16 @@ switch opt_CRISMTypeLib
         for i=1:length(crismTypeLib)
             crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
         end
+    case {5}
+        % (added on June. 8, 2022)
+        % include only h2o_ice
+        [crismTypeLib] = readCRISMTypeLibrary();
+        [~,h2oices_i] = searchby_multfield('name','h2o_ice',crismTypeLib);
+        crismTypelib_H2OIce = crismTypeLib(h2oices_i);
+        crismTypeLib = crismTypelib_H2OIce;
+        for i=1:length(crismTypeLib)
+            crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
+        end
     otherwise
         error('opt_CRISMTypeLib %d is not defined',opt_CRISMTypeLib);
 end
