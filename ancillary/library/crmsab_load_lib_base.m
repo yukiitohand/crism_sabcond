@@ -78,79 +78,85 @@ end
 %         error('method %s is not valid. Choose "interpCRISMspc" or "interp1" (case sensitive).',method);
 % end
 
-switch libname
-    case 'CRISMspclib'
-        Alibname = 'Acrismspclib'; infoAname = 'infoAcrismspclib';
-    case 'RELAB'
-        Alibname = 'Arelab'; infoAname = 'infoArelab';
-    case 'USGSsplib'
-        Alibname = 'Ausgs'; infoAname = 'infoAusgs';
-    case 'CRISMTypeLib'
-        Alibname = 'AcrismTypeLib'; infoAname = 'infoAcrismTypeLib';
-    case 'abscoeffH2Oicelib_Mastrapa2009'
-        Alibname = 'AabscoeffMastrapa2009'; infoAname = 'infoMastrapa2009';
-    case 'abscoeffH2Oicelib_Grundy1998'
-        Alibname = 'AabscoeffGrundy1998'; infoAname = 'infoGrundy1998';
-    case 'abscoeffH2Oicelib_GhoSSTGrundy1998'
-        Alibname = 'AabscoeffGhoSSTGrundy1998'; infoAname = 'infoGhoSSTGrundy1998';
-    case 'abscoeffH2Oicelib_Warren2008'
-        Alibname = 'AabscoeffWarren2008'; infoAname = 'infoWarren2008';
-    case 'abscoeffCO2icelib_Hansen'
-        Alibname = 'AabscoeffHansen'; infoAname = 'infoHansen';
-    case 'absxsecH2Olib_HITRAN'
-        Alibname = 'AabsxsecH2Olib_HITRAN'; infoAname = 'infoabsxsecH2Olib_HITRAN';
-    case 'absxsecCO2lib_HITRAN'
-        Alibname = 'AabsxsecCO2lib_HITRAN'; infoAname = 'infoabsxsecCO2lib_HITRAN';
-    case 'absxsecCOlib_HITRAN'
-        Alibname = 'AabsxsecCOlib_HITRAN'; infoAname = 'infoabsxsecCOlib_HITRAN';
-    case 'Q_H2Oicelib_Grundy1998'
-        Alibname = 'AQ_H2Oicelib_Grundy1998'; infoAname = 'infoQ_H2Oicelib_Grundy1998';
-    otherwise
-        error([ ...
-            'lib %s is not defined. Please select from: \n'           , ...
-            '     CRISMspclib\n'                                      , ...
-            '     RELAB\n'                                            , ...
-            '     USGSsplib\n'                                        , ...
-            '     CRISMTypLib\n'                                      , ...
-            '     abscoeffH2Oicelib_Mastrapa2009\n'                   , ...
-            '     abscoeffH2Oicelib_Grundy1998\n'                     , ...
-            '     abscoeffH2Oicelib_GhoSSTGrundy1998\n'               , ...
-            '     abscoeffH2Oicelib_Warren2008\n'                     , ...
-            '     abscoeffCO2icelib_Hansen\n'                         , ...
-            '     absxsecH2Olib_HITRAN\n'                             , ...
-            '     absxsecCO2lib_HITRAN\n'                             , ...
-            '     absxsecCOlib_HITRAN\n'                              , ...
-            '     Q_H2Oicelib_Grundy1998\n'                           , ...
-            '(case sensitive)'                                          ...
-            ], ...
-            libname);
-end
+if opt
+    switch libname
+        case 'CRISMspclib'
+            Alibname = 'Acrismspclib'; infoAname = 'infoAcrismspclib';
+        case 'RELAB'
+            Alibname = 'Arelab'; infoAname = 'infoArelab';
+        case 'USGSsplib'
+            Alibname = 'Ausgs'; infoAname = 'infoAusgs';
+        case 'CRISMTypeLib'
+            Alibname = 'AcrismTypeLib'; infoAname = 'infoAcrismTypeLib';
+        case 'abscoeffH2Oicelib_Mastrapa2009'
+            Alibname = 'AabscoeffMastrapa2009'; infoAname = 'infoMastrapa2009';
+        case 'abscoeffH2Oicelib_Grundy1998'
+            Alibname = 'AabscoeffGrundy1998'; infoAname = 'infoGrundy1998';
+        case 'abscoeffH2Oicelib_GhoSSTGrundy1998'
+            Alibname = 'AabscoeffGhoSSTGrundy1998'; infoAname = 'infoGhoSSTGrundy1998';
+        case 'abscoeffH2Oicelib_Warren2008'
+            Alibname = 'AabscoeffWarren2008'; infoAname = 'infoWarren2008';
+        case 'abscoeffCO2icelib_Hansen'
+            Alibname = 'AabscoeffHansen'; infoAname = 'infoHansen';
+        case 'absxsecH2Olib_HITRAN'
+            Alibname = 'AabsxsecH2Olib_HITRAN'; infoAname = 'infoabsxsecH2Olib_HITRAN';
+        case 'absxsecCO2lib_HITRAN'
+            Alibname = 'AabsxsecCO2lib_HITRAN'; infoAname = 'infoabsxsecCO2lib_HITRAN';
+        case 'absxsecCOlib_HITRAN'
+            Alibname = 'AabsxsecCOlib_HITRAN'; infoAname = 'infoabsxsecCOlib_HITRAN';
+        case 'Q_H2Oicelib_Grundy1998'
+            Alibname = 'AQ_H2Oicelib_Grundy1998'; infoAname = 'infoQ_H2Oicelib_Grundy1998';
+        otherwise
+            error([ ...
+                'lib %s is not defined. Please select from: \n'           , ...
+                '     CRISMspclib\n'                                      , ...
+                '     RELAB\n'                                            , ...
+                '     USGSsplib\n'                                        , ...
+                '     CRISMTypLib\n'                                      , ...
+                '     abscoeffH2Oicelib_Mastrapa2009\n'                   , ...
+                '     abscoeffH2Oicelib_Grundy1998\n'                     , ...
+                '     abscoeffH2Oicelib_GhoSSTGrundy1998\n'               , ...
+                '     abscoeffH2Oicelib_Warren2008\n'                     , ...
+                '     abscoeffCO2icelib_Hansen\n'                         , ...
+                '     absxsecH2Olib_HITRAN\n'                             , ...
+                '     absxsecCO2lib_HITRAN\n'                             , ...
+                '     absxsecCOlib_HITRAN\n'                              , ...
+                '     Q_H2Oicelib_Grundy1998\n'                           , ...
+                '(case sensitive)'                                          ...
+                ], ...
+                libname);
+    end
 
-dir_cacheWA = joinPath(dir_cache,'WA',wabasename);
-[libcachefname]    = crmsab_const_libcachefname(libname,opt,wabasename,method,retainRatio,c);
-[libcachefilepath] = joinPath(dir_cacheWA,libcachefname);
+    dir_cacheWA = joinPath(dir_cache,'WA',wabasename);
+    [libcachefname]    = crmsab_const_libcachefname(libname,opt,wabasename,method,retainRatio,c);
+    [libcachefilepath] = joinPath(dir_cacheWA,libcachefname);
 
-switch nargout
-    case 1
-        data = load(libcachefilepath,Alibname);
-        Alib = data.(Alibname);
-    case 2
-        data = load(libcachefilepath,Alibname);
-        Alib = data.(Alibname);
-        [info_cachefname]    = crmsab_const_libcachefname_info(libname,opt);
-        [info_cachefilepath] = joinPath(dir_cache,info_cachefname);
-        data = load(info_cachefilepath,infoAname);
-        infoA = data.(infoAname);
-    case 3
-        data = load(libcachefilepath,Alibname,'option');
-        Alib = data.(Alibname);
-        option = data.option;
-        [info_cachefname]    = crmsab_const_libcachefname_info(libname,opt);
-        [info_cachefilepath] = joinPath(dir_cache,info_cachefname);
-        data = load(info_cachefilepath,infoAname);
-        infoA = data.(infoAname);
-    otherwise
-        error('The number of output arguments is invalid');
+
+    switch nargout
+        case 1
+            data = load(libcachefilepath,Alibname);
+            Alib = data.(Alibname);
+        case 2
+            data = load(libcachefilepath,Alibname);
+            Alib = data.(Alibname);
+            [info_cachefname]    = crmsab_const_libcachefname_info(libname,opt);
+            [info_cachefilepath] = joinPath(dir_cache,info_cachefname);
+            data = load(info_cachefilepath,infoAname);
+            infoA = data.(infoAname);
+        case 3
+            data = load(libcachefilepath,Alibname,'option');
+            Alib = data.(Alibname);
+            option = data.option;
+            [info_cachefname]    = crmsab_const_libcachefname_info(libname,opt);
+            [info_cachefilepath] = joinPath(dir_cache,info_cachefname);
+            data = load(info_cachefilepath,infoAname);
+            infoA = data.(infoAname);
+        otherwise
+            error('The number of output arguments is invalid');
+    end
+
+else
+    Alib = []; infoA = []; option = [];
 end
 
 end

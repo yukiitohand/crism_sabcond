@@ -572,6 +572,7 @@ if is_debug
         plot(ax_res,RR_bad_1nan,'x'); 
     end
     drawnow;
+    keyboard;
 end
 
 %--------------------------------------------------------------------------
