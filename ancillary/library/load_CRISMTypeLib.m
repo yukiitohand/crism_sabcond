@@ -70,6 +70,26 @@ switch opt_CRISMTypeLib
         for i=1:length(crismTypeLib)
             crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
         end
+    case {8}
+        % (added on Sep. 2, 2022)
+        % include only h2o_ice and co2_ice
+        [crismTypeLib] = readCRISMTypeLibrary();
+        [~,ices_i] = searchby_multfield('name','ice',crismTypeLib);
+        crismTypelib_Ice = crismTypeLib(ices_i);
+        crismTypeLib = crismTypelib_Ice;
+        for i=1:length(crismTypeLib)
+            crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
+        end
+    case {9}
+        % (added on Sep. 2, 2022)
+        % include only co2_ice
+        [crismTypeLib] = readCRISMTypeLibrary();
+        [~,co2ices_i] = searchby_multfield('name','co2_ice',crismTypeLib);
+        crismTypelib_CO2Ice = crismTypeLib(co2ices_i);
+        crismTypeLib = crismTypelib_CO2Ice;
+        for i=1:length(crismTypeLib)
+            crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
+        end
     otherwise
         error('opt_CRISMTypeLib %d is not defined',opt_CRISMTypeLib);
 end

@@ -20,6 +20,10 @@ function [CRISMspclib,libs_CRISMspclib] = load_CRISMspclib(opt_CRISMspclib)
             libs_CRISMspclib = {'carbonate','inosil','nesosil','nitrates',...
                 'oxide','phosphate','phylosil','sorosil','sulfate',...
                 'tectosil'};
+        case 4
+            % Only Pyroxene
+            [CRISMspclib] = readCRISMspclib();
+            libs_CRISMspclib = {'inosil'};
         otherwise
             error('opt_CRISMspclib %d is not defined',opt_CRISMspclib);
     end

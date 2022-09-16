@@ -17,7 +17,7 @@ switch opt_splibUSGS
         splib_usgs_actv = searchby('irecno',irecnoList,splib06a);
         [splib_usgs_actv.spclib] = deal('USGS splib06a');
         [splib_usgs_actv.cumindex] = deal(1:length(splib_usgs_actv));
-    case 2
+    case {2,0}
         splib_usgs_actv = [];
     case 3
         load('splib07b.mat','splib07b');
