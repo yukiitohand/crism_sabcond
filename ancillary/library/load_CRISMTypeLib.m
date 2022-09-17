@@ -40,12 +40,53 @@ switch opt_CRISMTypeLib
             crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
         end
     case {5}
-        % (added on June. 8, 2022)
+        % (added on June 8, 2022)
         % include only h2o_ice
         [crismTypeLib] = readCRISMTypeLibrary();
         [~,h2oices_i] = searchby_multfield('name','h2o_ice',crismTypeLib);
         crismTypelib_H2OIce = crismTypeLib(h2oices_i);
         crismTypeLib = crismTypelib_H2OIce;
+        for i=1:length(crismTypeLib)
+            crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
+        end
+    case {6}
+        % (added on Aug. 23, 2022)
+        % exclude gypsum
+        [crismTypeLib] = readCRISMTypeLibrary();
+        [~,gypsum_i] = searchby_multfield('name','crism_typespec_gypsum',crismTypeLib);
+        nongypsum_i = setdiff(1:length(crismTypeLib),gypsum_i);
+        crismTypeLib = crismTypeLib(nongypsum_i);
+        for i=1:length(crismTypeLib)
+            crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
+        end
+    case {7}
+        % (added on Aug. 23, 2022)
+        % exclude gypsum and ices
+        [crismTypeLib] = readCRISMTypeLibrary();
+        [~,gypsum_i] = searchby_multfield('name','crism_typespec_gypsum',crismTypeLib);
+        [~,ices_i] = searchby_multfield('name','ice',crismTypeLib);
+        nongypice_i = setdiff(1:length(crismTypeLib),[gypsum_i ices_i]);
+        crismTypeLib = crismTypeLib(nongypice_i);
+        for i=1:length(crismTypeLib)
+            crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
+        end
+    case {8}
+        % (added on Sep. 2, 2022)
+        % include only h2o_ice and co2_ice
+        [crismTypeLib] = readCRISMTypeLibrary();
+        [~,ices_i] = searchby_multfield('name','ice',crismTypeLib);
+        crismTypelib_Ice = crismTypeLib(ices_i);
+        crismTypeLib = crismTypelib_Ice;
+        for i=1:length(crismTypeLib)
+            crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
+        end
+    case {9}
+        % (added on Sep. 2, 2022)
+        % include only co2_ice
+        [crismTypeLib] = readCRISMTypeLibrary();
+        [~,co2ices_i] = searchby_multfield('name','co2_ice',crismTypeLib);
+        crismTypelib_CO2Ice = crismTypeLib(co2ices_i);
+        crismTypeLib = crismTypelib_CO2Ice;
         for i=1:length(crismTypeLib)
             crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
         end

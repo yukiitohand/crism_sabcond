@@ -314,6 +314,11 @@ if Nice==0
     Aicelib = zeros(B,0,S,precision,gpu_varargin{:});
 end
 
+if Nlib==0
+    Alib = zeros(B,0,S,precision,gpu_varargin{:});
+end
+
+
 % preprocessing is necessary because some of the values in logYif might be
 % nans due to harse noise.
 logYif_isnan = isnan(logYif);
