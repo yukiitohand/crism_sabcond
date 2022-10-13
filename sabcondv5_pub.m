@@ -518,7 +518,7 @@ switch upper(storage_saving_level)
         do_crop_bands = true;
 end
 
-bands = crmsab_genBands(bands_opt);
+
 optLibs = [optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib];
 % libprefix = crmsab_const_libprefix_v2(optCRISMspclib,optRELAB,optUSGSsplib,optCRISMTypeLib,opticelib,'');
 
@@ -709,6 +709,9 @@ end
 %% Read image and ancillary data and format them for processing
 TRRIFdata.load_basenamesCDR();
 WAdata = TRRIFdata.readCDR('WA'); WAdata.readimgi();
+bands = crmsab_genBands_v2(WAdata.prop.wavelength_filter,bands_opt,WAdata.prop.binning,WAdata.prop.sclk);
+
+
 nLall = TRRIFdata.hdr.lines; nCall = TRRIFdata.hdr.samples; nBall = TRRIFdata.hdr.bands;
 if isempty(line_idxes), line_idxes = 1:nLall; end
 nL = length(line_idxes); nB = length(bands);
@@ -793,17 +796,19 @@ switch cal_bias_cor
             case 2 % aggressive correction
                 dev_coef = Yif(:,:,bands4bias) ./ (Yif(:,:,bands4bias)-dev_sub);
         end
-        
+        % apply biases for severely corrupted ones.
+        Yif = Yif(:,:,bands4bias)./dev_coef;
         
     case {0}
         dev_coef = ones(1,size(Yif,2),length(bands4bias));
         bands_bias_mad = zeros(length(bands),1);
+        % apply biases for severely corrupted ones.
+        % Yif = Yif(:,:,bands4bias)./dev_coef;
     otherwise
         error('Undefined CAL_BIAS_COR=%d',cal_bias_cor);
 end
 
-% apply biases for severely corrupted ones.
-Yif = Yif(:,:,bands4bias)./dev_coef;
+
 Yif = Yif(:,:,bands);
 Yif(Yif<=0) = nan;
 logYif = log(Yif);
@@ -920,7 +925,7 @@ end
 switch t_mode
     case {1,2,3}
         [ at_trans ] = crism_load_ADR_VS('BINNING',WAdata.prop.binning,...
-                                   'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter);
+            'WAVELENGTH_FILTER',WAdata.prop.wavelength_filter,'SCLK',WAdata.prop.sclk);
     case {4}
         sclk_img = (TRRIFdata.get_sclk_start()+TRRIFdata.get_sclk_stop())/2;
         [ at_trans ] = crmsab_load_T_sclk_closest(sclk_img,varargin_T{:});

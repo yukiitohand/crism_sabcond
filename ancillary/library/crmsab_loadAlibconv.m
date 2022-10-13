@@ -50,8 +50,10 @@ if ~overwrite && exist(Alibcachefilepath,'file')
         end
     end
 else
+    propWA = crism_getProp_basenameCDR4(wabasename);
     optInterp = crmsab_const_liboptInterp(optInterpid);
-    bands     = crmsab_genBands(bands_opt);
+    % bands     = crmsab_genBands(bands_opt);
+    bands = crmsab_genBands_v2(propWA.wavelength_filter,bands_opt,propWA.binning,propWA.sclk);
     % crism spectral library
     [Acrismspclib,infoAcrismspclib] = crmsab_load_lib_base('CRISMspclib',optCRISMspclib,wa_identfr,...
              c,'METHOD',optInterp(1).method,'retainRatio',optInterp(1).retainRatio);

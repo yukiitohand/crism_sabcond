@@ -7,8 +7,13 @@ function [wa_identfr] = crmsab_get_libWAIdentifier(wabasename)
 
 
 propWA = crism_getProp_basenameCDR4(wabasename);
-propWA.sclk      = 0;
-propWA.partition = 1;
+
+if propWA.binning==3 && propWA.wavelength_filter==2
+    
+else
+    propWA.sclk      = 0;
+    propWA.partition = 1;
+end
 
 wa_identfr = crism_get_basenameCDR4_fromProp(propWA);
 

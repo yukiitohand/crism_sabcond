@@ -43,6 +43,9 @@ function [] = crism_libConvoluter(libname,opt,varargin)
 %                 20th character of the basename of WA {'0','1','2','3'}
 %                 0: 1x, 1: 2x, 2: 5x, 3: 10x
 %                 (default) '0'
+%      'WAVELENGTH_FILTER' : pattern for regular expression, wavelength filter mode of WA file.
+%                 20th character of the basename of WA {'0','1','2','3'}
+%                 (default) '0'
 %      'VERSION'  : pattern for regular expression, version of the product
 %                 (default) '3'
 %      'SENSOR_ID' : pattern for regular expression, sensor_id
@@ -77,6 +80,7 @@ warn_overwrite = 1;
 retainRatio = 0.1;
 method = 'interpCRISMspc';
 binning = '0';
+wv_filter = '0';
 sensor_id = 'L';
 vr = '3';
 wabasename = '';
@@ -100,6 +104,8 @@ else
                 retainRatio = varargin{i+1};
             case 'BINNING'
                 binning = varargin{i+1};
+            case 'WAVELENGTH_FILTER'
+                wv_filter = varargin{i+1};
             case 'SENSOR_ID'
                 sensor_id = varargin{i+1};
             case 'VERSION'
@@ -245,7 +251,8 @@ if ~exist(dir_cacheWA,'dir')
 end
 
 if isempty(wabasename)
-    [ propWAptr ] = crism_create_propCDR4basename( 'Acro','WA','BINNING',binning,'SENSOR_ID',sensor_id,'Version',vr);
+    [ propWAptr ] = crism_create_propCDR4basename( 'Acro','WA', ...
+        'BINNING',binning,'WAVELENGTH_FILTER',wv_filter,'SENSOR_ID',sensor_id,'Version',vr);
     [~,wabasename,~] = crism_search_cdr_fromProp(propWAptr);
     if isempty(wabasename)
         error('No matching WA file is found');
