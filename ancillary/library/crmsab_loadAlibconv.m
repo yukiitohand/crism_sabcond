@@ -44,7 +44,7 @@ if ~overwrite && exist(Alibcachefilepath,'file')
         infoAlibcachefilepath = joinPath(dir_cache,infoAlibcachefname);
         load(infoAlibcachefilepath,'infoAall');
         if nargout>3
-            Aall_cachefname = crmsab_constAlibcachefname_Aall(libprefix,wa_identfr,optInterpid,bands_opt,c);
+            Aall_cachefname = crmsab_constAlibcachefname_Aall(libprefix,wa_identfr,optInterpid,c);
             Aall_cachefilepath = joinPath(Alibdir,Aall_cachefname);
             load(Aall_cachefilepath,'Aall');
         end
