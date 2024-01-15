@@ -40,9 +40,10 @@ if ~overwrite && exist(Aicelibcachefilepath,'file')
         load(infoAicelibcachefilepath,'infoAicelib');
     end
 else
+    propWA = crism_getProp_basenameCDR4(wabasename);
     [Aicelib,infoAicelib] = crmsab_load_icelibconv_wrapper(opt,wa_identfr,c);
     % select the band option
-    bands = crmsab_genBands(bands_opt);
+    bands = crmsab_genBands_v2(propWA.wavelength_filter,bands_opt,propWA.binning,propWA.sclk);
     Aicelib= Aicelib(bands,:); 
     % prun if there is any invalid one
     valid_idx = ~any(isnan(Aicelib),1);
