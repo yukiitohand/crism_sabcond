@@ -46,7 +46,10 @@ if ~overwrite && exist(Alibcachefilepath,'file')
         if nargout>3
             Aall_cachefname = crmsab_constAlibcachefname_Aall(libprefix,wa_identfr,optInterpid,c);
             Aall_cachefilepath = joinPath(Alibdir,Aall_cachefname);
-            load(Aall_cachefilepath,'Aall_b');
+            load(Aall_cachefilepath,'Aall');
+            propWA = crism_getProp_basenameCDR4(wabasename);
+            bands = crmsab_genBands_v2(propWA.wavelength_filter,bands_opt,propWA.binning,propWA.sclk);
+            Aall_b = Aall(bands,:);
         end
     end
 else
