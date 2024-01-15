@@ -310,6 +310,7 @@ dir_TRRX      = crism_env_vars.dir_TRRX; % TRRY_PDIR
 ffc_counter  = 1;
 OBS_COUNTER_SCENE_custom = 0;
 OBS_COUNTER_DF_custom = 0;
+take_median = false;
 
 % ## GENERAL SABCOND OPTIONS #---------------------------------------------
 bands_opt    = 4;
@@ -407,6 +408,8 @@ else
             case 'OBS_COUNTER_DF'
                 obs_counter_df_tmp = varargin{i+1};
                 OBS_COUNTER_DF_custom = 1;
+            case 'TAKE_MEDIAN'
+                take_median = varargin{i+1};
                 
             % ## GENERAL SABCOND OPTIONS #---------------------------------
             case 'BANDS_OPT'
@@ -592,6 +595,7 @@ if OBS_COUNTER_DF_custom
 end
 
 %% Read image and ancillary data and format them for processing
+% crism_obs_info = crism_get_obs_info_v2(obs_id, 'SENSOR_ID', 'L');
 crism_obs = CRISMObservation(obs_id,'SENSOR_ID','L',...
     'obs_counter_scene',obs_counter,'obs_counter_df',obs_counter_df);
 switch upper(crism_obs.info.obs_classType)
@@ -813,6 +817,12 @@ Yif = Yif(:,:,bands);
 Yif(Yif<=0) = nan;
 logYif = log(Yif);
 logYif = permute(logYif,[3,1,2]);
+
+if take_median
+    logYif = median(logYif, 2, 'omitnan');
+    nLall = 1;
+    lBool = true;
+end
 
 %%
 % read bad pixel
@@ -1391,7 +1401,7 @@ switch upper(PROC_MODE)
                 mc = squeeze(mc);
         end
         bp_est_bools = permute(bp_est_bools,[2,3,1]);
-        badspcs = squeeze(badspcs);
+        badspcs = permute(badspcs,[2, 3, 1]);
         Valid_pixels = ~badspcs;
     
         Yif_cor = exp(Yif_cor); 
