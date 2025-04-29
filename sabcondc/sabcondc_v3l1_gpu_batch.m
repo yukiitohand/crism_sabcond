@@ -74,6 +74,10 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %   'OPT_BANDS_IGNORE_INIT': string, {'none','ltn035'}
 %       option for selecting bands to be ignored.
 %       (default) 'none'
+%   'INCLUDE_ICE': bool,
+%       whether or not to include the contribution of ICE from (Aicelib)to 
+%       the model
+%       (default) false
 %   (below is under development)
 %   'BANDS_IGNORE_INIT':boolean, [B x 1 x S]
 %       bands to be ignored in the first iteration
@@ -167,6 +171,7 @@ logt_relax = false;
 opt_bands_ignore_init = 'none';
 bands_ignore_init = false(B,1,S);
 bands_logt_nonlinear = false(B,1,S);
+include_ice = false;
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = 0;
 stdl1_ifdf  = [];
@@ -222,6 +227,8 @@ else
                 bands_ignore_init = varargin{i+1};
             case 'BANDS_LOGT_NONLINEAR'
                 bands_logt_nonlinear = varargin{i+1};
+            case 'INCLUDE_ICE'
+                include_ice = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -538,8 +545,13 @@ if is_debug
     else
         Xtc = sum(X(idxAlogT,:,:),1);
     end
-    logYif_cor_test = logYif - logT * Xtc - A(:,idxAice)*X(idxAice,:);
-    ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+    if include_ice
+        logYif_cor_test = logYif - logT * Xtc;
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAice)*X(idxAice,:);
+    else
+        logYif_cor_test = logYif - logT * Xtc - A(:,idxAice)*X(idxAice,:);
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+    end
     bg = C*Z;
     ygood_1nan = convertBoolTo1nan(~logYif_isnan);
     ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -583,10 +595,10 @@ end
 %--------------------------------------------------------------------------
 switch upper(lambda_update_rule)
     case 'L1SUM'
-        resNrm = nansum(abs(RR.* lambda_r),[1,2]);
+        resNrm = sum(abs(RR.* lambda_r),[1,2], 'omitnan');
     case 'MED'
         logYif_nisnan_1nan = convertBoolTo1nan(~logYif_isnan);
-        resNrm = nanmedian(abs(lambda_r.*RR .* logYif_nisnan_1nan),[1,2]);
+        resNrm = median(abs(lambda_r.*RR .* logYif_nisnan_1nan),[1,2],'omitnan');
     case 'NONE'
         resNrm = 1;
     otherwise
@@ -777,7 +789,11 @@ switch weight_mode
 end
 
 if is_debug
-    logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+    if include_ice
+        logYif_cor_test = logYif - logt_est * Xtc;
+    else
+        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+    end
     logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
     logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
@@ -968,8 +984,13 @@ for n=2:nIter
         else
             Xtc = sum(X(idxAlogT,:,:),1);
         end
-        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
-        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+        if include_ice
+            logYif_cor_test = logYif - logt_est * Xtc;
+            ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAice)*X(idxAice,:);
+        else
+            logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+            ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+        end
         bg = C*Z;
         ygood_1nan = convertBoolTo1nan(~logYif_isnan);
         ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -1144,6 +1165,11 @@ for n=2:nIter
     end
     
     if is_debug
+        if include_ice
+            logYif_cor_test = logYif - logt_est * Xtc;
+        else
+            logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+        end
         logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
         logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
         logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
@@ -1254,8 +1280,13 @@ if is_debug
     else
         Xtc = sum(X(idxAlogT,:,:),1);
     end
-    logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
-    ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+    if include_ice
+        logYif_cor_test = logYif - logt_est * Xtc ;
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAice)*X(idxAice,:);
+    else
+        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+    end
     bg = C*Z;
     ygood_1nan = convertBoolTo1nan(~logYif_isnan);
     ybad_1nan = convertBoolTo1nan(logYif_isnan);
@@ -1297,12 +1328,20 @@ if batch
     logAB        = pagefun(@mtimes,Alib,X(idxAlib,:,:));
     logBg        = pagefun(@mtimes,C,Z);
     logIce       = pagefun(@mtimes,Aicelib,X(idxAice,:,:));
-    logYif_cor   = logYif - pagefun(@mtimes,logt_est,Xtc) - logIce;
+    if include_ice
+        logYif_cor   = logYif - pagefun(@mtimes,logt_est,Xtc);
+    else
+        logYif_cor   = logYif - pagefun(@mtimes,logt_est,Xtc) - logIce;
+    end
 else
     logAB = Alib*X(idxAlib,:);
     logBg = C*Z;
     logIce = Aicelib*X(idxAice,:);
-    logYif_cor = logYif - logt_est*Xtc - logIce;
+    if include_ice
+        logYif_cor = logYif - logt_est*Xtc;
+    else
+        logYif_cor = logYif - logt_est*Xtc - logIce;
+    end
 end
 % logt_est     = A(:,idx,:);
 logYif_cor(logYif_isnan) = nan;

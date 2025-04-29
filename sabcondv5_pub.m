@@ -196,6 +196,10 @@ function [out] = sabcondv5_pub(obs_id,varargin)
 %   'OPT_BANDS_IGNORE_INIT': string, {'none','ltn035'}
 %       options for selecting bands to be ignored in the first iteration
 %       (default) 'none'
+%   'INCLUDE_ICE': bool,
+%       whether or not to include the contribution of ICE from (Aicelib)to 
+%       the model
+%       (default) false
 %
 %  ## PRE-PROCESSING OPTIONS #---------------------------------------------
 %   'CAL_BIAS_COR': Integer {0,1,2}
@@ -325,6 +329,7 @@ lambda_update_rule = 'L1SUM';
 th_badspc    = 0.8;
 ffc_mode     = false;
 opt_bands_ignore_init = 'none';
+include_ice = false;
 
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 cal_bias_cor = 0;
@@ -436,6 +441,8 @@ else
                 ffc_mode = varargin{i+1};
             case 'OPT_BANDS_IGNORE_INIT'
                 opt_bands_ignore_init = varargin{i+1};
+            case 'INCLUDE_ICE'
+                include_ice = varargin{i+1};
                 
             % % ## PRE-PROCESSING OPTIONS #--------------------------------
             case 'CAL_BIAS_COR'
@@ -1336,15 +1343,22 @@ switch upper(PROC_MODE)
                                       'DEBUG',is_debug,...
                                       'Bands_Bias_MAD',bands_bias_mad,...
                                       'T_UPDATE',t_update,'LOGT_NEG',logT_neg,'logt_relax',logt_relax,...
-                                      'opt_bands_ignore_init',opt_bands_ignore_init,'debug_l_plot',debug_l_plot);
+                                      'opt_bands_ignore_init',opt_bands_ignore_init,'debug_l_plot',debug_l_plot, ...
+                                      'Include_Ice', include_ice);
                     end
             end
             switch upper(PROC_MODE)
                 case {'GPU_BATCH_2'}
-                Yif_cor_ori(bBool,lBool,Columns)...
-                    = logYif(:,:,Columns) ...
-                    - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xt_c)))...
-                    -Ice_est(bBool,lBool,Columns);
+                    if include_ice
+                        Yif_cor_ori(bBool,lBool,Columns)...
+                            = logYif(:,:,Columns) ...
+                            - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xt_c)));
+                    else
+                        Yif_cor_ori(bBool,lBool,Columns)...
+                            = logYif(:,:,Columns) ...
+                            - gather(pagefun(@mtimes,gpuArray(T_est(bBool,1,Columns)),gpuArray(Xt_c)))...
+                            -Ice_est(bBool,lBool,Columns);
+                    end
                 case {'GPU_BATCH_3'}
                     Yif_cor_ori(bBool,lBool,Columns)...
                     = logYif(:,:,Columns) ...
@@ -1364,9 +1378,14 @@ switch upper(PROC_MODE)
                     = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xt_c...
                       -Ice_est(bBool,lBool,Columns) - mc(bBool,:,Columns);
                 otherwise
-                    Yif_cor_ori(bBool,lBool,Columns) ...
-                    = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xt_c...
-                      -Ice_est(bBool,lBool,Columns);
+                    if include_ice
+                        Yif_cor_ori(bBool,lBool,Columns) ...
+                        = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xt_c;
+                    else
+                        Yif_cor_ori(bBool,lBool,Columns) ...
+                        = logYif(:,:,Columns)-T_est(bBool,1,Columns)*Xt_c...
+                          -Ice_est(bBool,lBool,Columns);
+                    end
             end
             
             Xt_c_cell   = squeeze(num2cell(Xt_c,[1,2]));
@@ -1494,6 +1513,7 @@ fprintf(fid,'LAMBDA_UPDATE_RULE: %s\n',lambda_update_rule);
 fprintf(fid,'THRESHOLD_BADSPC: %f\n',th_badspc);
 fprintf(fid,'FFC_MODE: %d\n',ffc_mode);
 fprintf(fid,'OPT_BANDS_IGNORE_INIT: %s\n',opt_bands_ignore_init);
+fprintf(fid,'INCLUDE_ICE: %d\n', include_ice);
 
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 fprintf(fid,'CAL_BIAS_COR: %d\n', cal_bias_cor);
@@ -1583,6 +1603,7 @@ settings.lambda_update_rule = lambda_update_rule;
 settings.th_badspc = th_badspc;
 settings.ffc_mode = ffc_mode;
 settings.opt_bands_ignore_init = opt_bands_ignore_init;
+settings.include_ice = include_ice;
 % ## PRE-PROCESSING OPTIONS #----------------------------------------------
 settings.cal_bias_cor = cal_bias_cor;
 % ## TRANSMISSION SPECTRUM OPTIONS #---------------------------------------
@@ -1614,7 +1635,11 @@ settings.debug = is_debug;
 % performing interpolation
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Yif_cor_nr = Yif_cor;
-Yif_mdl = AB_est .* Bg_est;
+if include_ice
+    Yif_mdl = AB_est .* Bg_est + Ice_est;
+else
+    Yif_mdl = AB_est .* Bg_est;
+end
 nan_cells = isnan(Yif_cor);
 Yif_cor_nr(nan_cells) = Yif_mdl(nan_cells);
 

@@ -130,6 +130,16 @@ elseif ~exist(infocachefilepath,'file') || overwrite
                 for i=1:length(crismTypeLib)
                     crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
                 end
+             case {10}
+                % (added on Aug. 23, 2022)
+                % exclude gypsum
+                [crismTypeLib] = readCRISMTypeLibrary();
+                [~,gypsum_i] = searchby_multfield('name','crism_typespec_gypsum',crismTypeLib);
+                nongypice_i = setdiff(1:length(crismTypeLib), [gypsum_i]);
+                crismTypeLib = crismTypeLib(nongypice_i);
+                for i=1:length(crismTypeLib)
+                    crismTypeLib(i).reflectance = crismTypeLib(i).ratioed_cor;
+                end
             otherwise
                 error('opt_CRISMTypeLib %d is not defined',opt_CRISMTypeLib);
         end
