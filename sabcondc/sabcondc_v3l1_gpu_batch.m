@@ -1,4 +1,4 @@
-function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc,bp_est_bool]...
+function [logYif_cor,logt_est,logAB,logBg,logIce,logSurfIce,logYif_isnan,Xt,Xlib,Xice,Xsurfice,badspc,bp_est_bool]...
     = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
 % [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badspc]...
 %     = sabcondc_v3l1_gpu_batch(logYif,WA,Alib,logT,BP,varargin)
@@ -160,8 +160,9 @@ function [logYif_cor,logt_est,logAB,logBg,logIce,logYif_isnan,Xt,Xlib,Xice,badsp
 %% VARARGIN
 % ## GENERAL PARAMETERS #--------------------------------------------------
 Aicelib   = [];
+Asurficelib = [];
 nIter     = int32(5);
-th_badspc = 0.8;
+th_badspc = 0.5;
 lambda_update_rule = 'L1SUM';
 ffc_mode  = false;
 bands_bias_mad = zeros(B,1);
@@ -172,6 +173,8 @@ opt_bands_ignore_init = 'none';
 bands_ignore_init = false(B,1,S);
 bands_logt_nonlinear = false(B,1,S);
 include_ice = false;
+% thrd_noise_small = 0.0015;
+thrd_snr = 0.02;
 % ## WEIGHT PARAMETERS #---------------------------------------------------
 weight_mode = 0;
 stdl1_ifdf  = [];
@@ -181,6 +184,7 @@ lbl         = [];
 % ## HUWACB PARAMETERS #---------------------------------------------------
 lambda_a       = 0.01;
 lambda_a_ice   = 0;
+lambda_a_surfice   = 0;
 maxiter_huwacb = int32(1000);
 tol_huwacb     = 1e-4;
 verbose_huwacb = 'no';
@@ -205,6 +209,8 @@ else
             % ## GENERAL PARAMETERS #--------------------------------------
             case 'AICELIB'
                 Aicelib = varargin{i+1};
+            case 'ASURFICELIB'
+                Asurficelib = varargin{i+1};
             case 'NITER'
                 nIter = varargin{i+1};
             case 'THRESHOLD_BADSPC'
@@ -229,6 +235,11 @@ else
                 bands_logt_nonlinear = varargin{i+1};
             case 'INCLUDE_ICE'
                 include_ice = varargin{i+1};
+
+            % case 'THRESHOLD_NOISE_SMALL'
+            %     thrd_noise_small = varargin{i+1};
+            case 'THRESHOLD_SNR'
+                thrd_snr = varargin{i+1};
                 
             % ## WEIGHT PARAMETERS #---------------------------------------
             case 'WEIGHT_MODE'
@@ -247,6 +258,8 @@ else
                 lambda_a = varargin{i+1};
             case 'LAMBDA_A_ICE'
                 lambda_a_ice = varargin{i+1};
+            case 'LAMBDA_A_SURFICE'
+                lambda_a_surfice = varargin{i+1};
             case 'MAXITER_HUWACB'
                 maxiter_huwacb = round(varargin{i+1});
                 if (maxiter_huwacb <= 0 )
@@ -308,6 +321,7 @@ end
 % Preprocessing
 %-------------------------------------------------------------------------%
 [~,Nice,~] = size(Aicelib);
+[~,Nsurfice, ~] = size(Asurficelib);
 
 if batch
     gpu_varargin = {'gpuArray'};
@@ -319,6 +333,10 @@ if batch && S==1, fprintf('BATCH Processing is efficient if you have 3D array.')
 
 if Nice==0
     Aicelib = zeros(B,0,S,precision,gpu_varargin{:});
+end
+
+if Nsurfice==0
+    Asurficelib = zeros(B,0,S,precision,gpu_varargin{:});
 end
 
 if Nlib==0
@@ -354,6 +372,7 @@ if batch
     WA      = gpuArray(WA);
     Alib    = gpuArray(Alib);
     Aicelib = gpuArray(Aicelib);
+    Asurficelib = gpuArray(Asurficelib);
     logT    = gpuArray(logT);
     BP      = gpuArray(BP);
     logYif_isnan = gpuArray(logYif_isnan);
@@ -370,17 +389,19 @@ Yif = exp(logYif);
 % initialization using the matrix logT
 %-------------------------------------------------------------------------%
 if ffc_mode
-    A = cat(2,Aicelib,Alib);
-    N_A = Nice+Nlib;
+    A = cat(2,Aicelib,Asurficelib, Alib);
+    N_A = Nice+Nsurfice+Nlib;
     idxAlogT = false(1,N_A);
     idxAice = false(1,N_A); idxAice(1:Nice) = true;
-    idxAlib = false(1,N_A); idxAlib((Nice+1):N_A) = true;
+    idxAsurfice = false(1,N_A); idxAsurfice(Nice+1:Nice+Nsurfice) = true;
+    idxAlib = false(1,N_A); idxAlib((Nice+Nsurfice+1):N_A) = true;
 else
-    A = cat(2,logT,Aicelib,Alib);
-    N_A = Ntc+Nice+Nlib;
+    A = cat(2,logT,Aicelib, Asurficelib, Alib);
+    N_A = Ntc+Nice+Nsurfice+Nlib;
     idxAlogT = false(1,N_A); idxAlogT(1:Ntc) = true;
     idxAice = false(1,N_A);  idxAice((Ntc+1):(Ntc+Nice)) = true;
-    idxAlib = false(1,N_A);  idxAlib((Ntc+Nice+1):N_A) = true;
+    idxAsurfice = false(1,N_A);  idxAsurfice((Ntc+Nice+1):(Ntc+Nice+Nsurfice)) = true;
+    idxAlib = false(1,N_A);  idxAlib((Ntc+Nice+Nsurfice+1):N_A) = true;
 end
 % compute concave basese beforehand
 % C = concaveOperator(WA);
@@ -409,9 +430,10 @@ end
 % lambda_r = ones(B,L,S,precision);
 % lambda_c = zeros(B,L,S,precision,gpu_varargin{:});
 if ffc_mode
-    lambda_a_2 = zeros(Nice+Nlib,L,S,precision,gpu_varargin{:});
+    lambda_a_2 = zeros(Nice+Nsurfice+Nlib,L,S,precision,gpu_varargin{:});
 else
-    lambda_a_2 = zeros(Ntc+Nice+Nlib,L,S,precision,gpu_varargin{:});
+    % lambda_a_2 = zeros(Ntc+Nice+Nlib,L,S,precision,gpu_varargin{:});
+    lambda_a_2 = zeros(Ntc+Nice+Nsurfice+Nlib,L,S,precision,gpu_varargin{:});
 end
 
 switch weight_mode
@@ -420,13 +442,14 @@ switch weight_mode
         lambda_r(logYif_isnan_ori) = 0;
     case 1
         % compute weight
-        mYif = nanmean(Yif,2);
+        mYif = median(Yif, 2, 'omitnan');
         if batch
-            mYif1 = pagefun(@mtimes,pagefun(@transpose,mYif),Yif)./ sum(mYif.^2,1);
-            Ymdl = pagefun(@mtimes,mYif,mYif1);
+            mYif1 = pagefun(@mtimes, ...
+                pagefun(@transpose, mYif), Yif) ./ sum(mYif.^2, 1);
+            Ymdl = pagefun(@mtimes, mYif, mYif1);
         else
-            mYif1 = mYif'*Yif/norm(mYif,2)^2;
-            Ymdl = mYif*mYif1;
+            mYif1 = mYif' * Yif / norm(mYif,2)^2;
+            Ymdl = mYif * mYif1;
         end
         
         RDimg = crism_if2rd(Ymdl,SFimg,lbl);
@@ -459,20 +482,54 @@ else
     lambda_a_2(idxAlogT,:,:) = 0.0*ones(Ntc,L,S,precision,gpu_varargin{:});
 end
 lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
+lambda_a_2(idxAsurfice,:,:) = lambda_a_surfice.*ones(Nsurfice,L,S,precision,gpu_varargin{:});
 lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 
 % 
 % lambda_c_ori = bands_bias_mad./Ymdl;
 lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif+bands_bias_mad)./(Ymdl);
 % lambda_c_ori = (stdl1_ifdf+photon_noise_mad_stdif)./(Ymdl);
+% lambda_c = lambda_c_ori;
+% lambda_c(logYif_isnan) = inf;
+% lambda_c([1,Nc],:,:) = 0; % safeguard
+
+c2_z = zeros([Nc, L, S], precision);
+c2_z(1,:,:) = -inf; c2_z(Nc,:,:) = -inf;
+
+
+logYif_isnan_c = logYif_isnan;
+logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:), ...
+    logYif_isnan_c([1,Nc],:,:));
+% lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad)./(Ymdl) .* cff;
+% lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac))./(Ymdl) .* cff;
+% lambda_c = lambda_c_ori;
 lambda_c = lambda_c_ori;
-lambda_c(logYif_isnan) = inf;
+lambda_c(logYif_isnan_c) = inf;
 lambda_c([1,Nc],:,:) = 0; % safeguard
 
+[~, first_gp_l] = max(~logYif_isnan_c, [], 1);
+is_bad_ledge = first_gp_l > 10;
+[row_is_bad_ledge, col_is_bad_ledge] = ind2sub([L,S], find(is_bad_ledge));
+lambda_c_ledge_bad_ind = sub2ind(size(logYif_isnan), ...
+    ones(size(row_is_bad_ledge)), row_is_bad_ledge, col_is_bad_ledge);
+lambda_c(lambda_c_ledge_bad_ind) = inf;
+lambda_c_ledge_ind = sub2ind(size(lambda_c), first_gp_l(is_bad_ledge), ...
+    row_is_bad_ledge, col_is_bad_ledge);
+c2_z(lambda_c_ledge_bad_ind) = 0;
+c2_z(lambda_c_ledge_ind) = -inf;
 
-c2_z = zeros([Nc,1],precision);
-% c2_z = zeros([Nc,1],precision,'gpuArray');
-c2_z(1) = -inf; c2_z(Nc) = -inf;
+
+[~, first_gp_r] = max(flip(~logYif_isnan_c, 1), [], 1);
+is_bad_redge = first_gp_r > 10;
+[row_is_bad_redge, col_is_bad_redge] = ind2sub([L,S], find(is_bad_redge));
+lambda_c_redge_bad_ind = sub2ind(size(logYif_isnan), ...
+    Nc * ones(size(row_is_bad_redge)), row_is_bad_redge, col_is_bad_redge);
+lambda_c(lambda_c_redge_bad_ind) = inf;
+lambda_c_redge_ind = sub2ind(size(lambda_c), ...
+    Nc - first_gp_r(is_bad_redge) + 1, ...
+    row_is_bad_redge, col_is_bad_redge);
+c2_z(lambda_c_redge_bad_ind) = 0;
+c2_z(lambda_c_redge_ind) = -inf;
 
 % main computation
 % tic;
@@ -487,7 +544,7 @@ if ffc_mode
     else
         [  X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
             = huwacbl1_admm_gat_a(A,logYif-logT,WA,'LAMBDA_A',lambda_a_2,...
-            'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'YNORMALIZE',y_normalize,.....
+            'LAMBDA_C',lambda_c, 'c2_z', c2_z, 'LAMBDA_R',lambda_r,'YNORMALIZE',y_normalize,.....
             'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
             'precision',precision,'gpu',gpu,'Concavebase',C,'debug',debug_huwacb);
     end
@@ -501,8 +558,8 @@ else
     else
         [  X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
         = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
-        'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,'YNORMALIZE',y_normalize,.....
-        'tol',1e-5,'maxiter',300,'verbose','no',...
+        'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r, 'c2_z', c2_z,'YNORMALIZE',y_normalize,.....
+        'tol',1e-5,'maxiter',1000,'verbose','no',...
         'precision',precision,'gpu',gpu,'Concavebase',C,'debug',debug_huwacb);
     end
 end
@@ -547,10 +604,10 @@ if is_debug
     end
     if include_ice
         logYif_cor_test = logYif - logT * Xtc;
-        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAice)*X(idxAice,:);
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAsurfice)*X(idxAsurfice,:) + A(:,idxAice)*X(idxAice,:);
     else
         logYif_cor_test = logYif - logT * Xtc - A(:,idxAice)*X(idxAice,:);
-        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAsurfice)*X(idxAsurfice,:);
     end
     bg = C*Z;
     ygood_1nan = convertBoolTo1nan(~logYif_isnan);
@@ -641,7 +698,7 @@ switch weight_mode
         RDimg = crism_if2rd(Ymdl,SFimg,lbl);
         [photon_noise_mad_stdif] = crism_estimate_photon_noise_base(...
                                         RDimg,permute(WA,[1,3,2]),WA_um_pitch,lbl,SFimg);
-        mad_rr_band_theor = nanmedian(stdl1_ifdf+photon_noise_mad_stdif,2);
+        mad_rr_band_theor = median(stdl1_ifdf+photon_noise_mad_stdif,2, 'omitnan');
         res_exp = Yif - Ymdl;
         mad_rr_band_prac = robust_v3('med_abs_dev_from_med',res_exp,2,'NOutliers',10);
         mad_log_band = robust_v3('med_abs_dev_from_med',RR,2,'NOutliers',10);
@@ -781,10 +838,33 @@ switch weight_mode
             end
         end
         logYif_isnan_spk = abs(res_exp_scaled)>0.003; % conservative choice
+        logYif_isnan_spk = abs(res_exp_scaled)>0.1; % conservative choice
         
         logYif_isnan = or(logYif_isnan_ori, or(bp_est_bool,logYif_isnan_spk));
+
+        % Additional evaluation: if a pixel is not marked as a bad pixel,
+        % but more than half of the surrounding are bad, then a bad pixel
+        % is wrongly fitted well by chance.
+        % local_gp_ratio = conv2(~logYif_isnan, ones(21,1)/21,'same');
+        % not_isolated = conv2(local_gp_ratio > 0.5, ones(21,1), 'same');
+        % logYif_isnan(not_isolated < 1) = true;
+
+        % check too many bad entries are detected for each spectrum.
+        badspc = (sum(logYif_isnan,1)/B) > th_badspc;
+        logYif_isnan = or(logYif_isnan,badspc);
         
-        % do we need this?
+        % if include_ice
+        %     logYif_cor_1nan = logYif - logt_est * Xtc;
+        % else
+        %     logYif_cor_1nan = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+        % end
+        % logYif_cor_1nan(logYif_isnan) = nan;
+        % logy_med = median(logYif_cor_1nan, 1, 'omitnan');
+        % dst_from_med = abs(logYif_cor_1nan - logy_med);
+        % prc80_spc = prctile(dst_from_med, 80, 1);
+        % logYif_isnan(dst_from_med > prc80_spc * 3) = true;
+        
+        % do we need this? Yes
         lambda_r(logYif_isnan) = 0;
 end
 
@@ -794,6 +874,8 @@ if is_debug
     else
         logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
     end
+    ygood_1nan = convertBoolTo1nan(~logYif_isnan);
+    ybad_1nan = convertBoolTo1nan(logYif_isnan);
     logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
     logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
@@ -838,28 +920,32 @@ end
 % main loop
 %-------------------------------------------------------------------------%
 if ffc_mode
-    A = cat(2,Aicelib,Alib);
+    A = cat(2,Aicelib, Asurficelib, Alib);
     % X = X; D = D;
-    N_A = Nice+Nlib;
+    N_A = Nice+Nsurfice+Nlib;
     idxAlogT = false(1,N_A);
     idxAice = false(1,N_A);  idxAice(1:Nice) = true;
-    idxAlib = false(1,N_A);  idxAlib((Nice+1):N_A) = true;
+    idxAsurfice = false(1,N_A);  idxAsurfice(Nice+1:Nice+Nsurfice) = true;
+    idxAlib = false(1,N_A);  idxAlib((Nice+Nsurfice+1):N_A) = true;
     lambda_a_2 = ones(N_A,L,S,precision,gpu_varargin{:});
     lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
+    lambda_a_2(idxAsurfice,:,:) = lambda_a_surfice.*ones(Nsurfice,L,S,precision,gpu_varargin{:});
     lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 else
-    A = cat(2,logt_est,Aicelib,Alib);
+    A = cat(2,logt_est, Aicelib, Asurficelib, Alib);
     X = cat(1,Xtc,X((1+Ntc):N_A,:,:));
     D = cat(1,zeros(1,L,S,precision,gpu_varargin{:}),D((1+Ntc):(N_A+Nc+B),:,:));
     Rhov = cat(1,ones(1,1,S,precision,gpu_varargin{:}),Rhov((Ntc+1):(N_A+Nc+B),:,:));
     
-    N_A = 1+Nice+Nlib;
+    N_A = 1+Nice+Nsurfice + Nlib;
     idxAlogT = false(1,N_A); idxAlogT(1) = true;
     idxAice = false(1,N_A);  idxAice(2:(Nice+1)) = true;
-    idxAlib = false(1,N_A);  idxAlib((Nice+2):N_A) = true;
+    idxAsurfice = false(1,N_A);  idxAsurfice((Nice+2):(Nice+Nsurfice+1)) = true;
+    idxAlib = false(1,N_A);  idxAlib((Nice+Nsurfice+2):N_A) = true;
     lambda_a_2 = ones(N_A,L,S,precision,gpu_varargin{:});
     lambda_a_2(idxAlogT,:,:) = 0;
     lambda_a_2(idxAice,:,:) = lambda_a_ice.*ones(Nice,L,S,precision,gpu_varargin{:});
+    lambda_a_2(idxAsurfice,:,:) = lambda_a_surfice.*ones(Nsurfice,L,S,precision,gpu_varargin{:});
     lambda_a_2(idxAlib,:,:) = lambda_a.*ones(Nlib,L,S,precision,gpu_varargin{:});
 end
 
@@ -868,6 +954,7 @@ else
     lambda_a_2(idxAlogT,:,:) = lambda_a_2(idxAlogT,:,:) .* (resNewNrm ./ resNrm);
 end
 lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
+lambda_a_2(idxAsurfice,:,:) = lambda_a_2(idxAsurfice,:,:) .* (resNewNrm ./ resNrm);
 lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
 cff = resNewNrm./resNrm;
 % lambda_c = lambda_c.* (resNewNrm ./ resNrm);
@@ -880,7 +967,7 @@ cff = resNewNrm./resNrm;
 % lambda_tmp = lambda_tmp .* resNewNrm ./ resNrm;
 
 logYif_isnan_c = logYif_isnan;
-logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:),...
+logYif_isnan_c([2,Nc-1],:,:) = or(logYif_isnan_c([2,Nc-1],:,:), ...
     logYif_isnan_c([1,Nc],:,:));
 % lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac)+bands_bias_mad)./(Ymdl) .* cff;
 lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac))./(Ymdl) .* cff;
@@ -888,6 +975,31 @@ lambda_c_ori = (max(mad_rr_theor,mad_rr_band_prac))./(Ymdl) .* cff;
 lambda_c = lambda_c_ori;
 lambda_c(logYif_isnan_c) = inf;
 lambda_c([1,Nc],:,:) = 0; % safeguard
+
+[~, first_gp_l] = max(~logYif_isnan_c, [], 1);
+is_bad_ledge = first_gp_l > 10;
+[row_is_bad_ledge, col_is_bad_ledge] = ind2sub([L,S], find(is_bad_ledge));
+lambda_c_ledge_bad_ind = sub2ind(size(logYif_isnan), ...
+    ones(size(row_is_bad_ledge)), row_is_bad_ledge, col_is_bad_ledge);
+lambda_c(lambda_c_ledge_bad_ind) = inf;
+lambda_c_ledge_ind = sub2ind(size(lambda_c), first_gp_l(is_bad_ledge), ...
+    row_is_bad_ledge, col_is_bad_ledge);
+c2_z(lambda_c_ledge_bad_ind) = 0;
+c2_z(lambda_c_ledge_ind) = -inf;
+
+
+[~, first_gp_r] = max(flip(~logYif_isnan_c, 1), [], 1);
+is_bad_redge = first_gp_r > 10;
+[row_is_bad_redge, col_is_bad_redge] = ind2sub([L,S], find(is_bad_redge));
+lambda_c_redge_bad_ind = sub2ind(size(logYif_isnan), ...
+    Nc * ones(size(row_is_bad_redge)), row_is_bad_redge, col_is_bad_redge);
+lambda_c(lambda_c_redge_bad_ind) = inf;
+lambda_c_redge_ind = sub2ind(size(lambda_c), ...
+    Nc - first_gp_r(is_bad_redge) + 1, ...
+    row_is_bad_redge, col_is_bad_redge);
+c2_z(lambda_c_redge_bad_ind) = 0;
+c2_z(lambda_c_redge_ind) = -inf;
+
 
 for n=2:nIter
     % tic;
@@ -904,6 +1016,7 @@ for n=2:nIter
                 [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
                 = huwacbl1_admm_gat_a(A,logYif-logt_est,WA,'LAMBDA_A',lambda_a_2,...
                 'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+                'C2_Z',c2_z, ...
                 'Z0',Z,'D0',D,'X0',X,'R0',RR,...
                 'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
                 'precision',precision,'gpu',gpu,'Concavebase',C,...
@@ -921,6 +1034,7 @@ for n=2:nIter
                 [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
                 = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
                 'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
+                'C2_Z',c2_z, ...
                 'Z0',Z,'D0',D,'X0',X,'R0',RR,...
                 'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
                 'precision',precision,'gpu',gpu,'Concavebase',C,...
@@ -940,7 +1054,7 @@ for n=2:nIter
                 = huwacbl1_admm_gat_a(A,logYif-logt_est,WA,'LAMBDA_A',lambda_a_2,...
                 'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
                 'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
-                'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+                'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
                 'precision',precision,'gpu',gpu,'Concavebase',C,...
                 'debug',debug_huwacb,'YNORMALIZE',y_normalize);
             end
@@ -956,7 +1070,7 @@ for n=2:nIter
                 = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
                 'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
                 'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
-                'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+                'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
                 'precision',precision,'gpu',gpu,'Concavebase',C,...
                 'debug',debug_huwacb,'YNORMALIZE',y_normalize);
             end
@@ -986,10 +1100,10 @@ for n=2:nIter
         end
         if include_ice
             logYif_cor_test = logYif - logt_est * Xtc;
-            ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAice)*X(idxAice,:);
+            ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAsurfice)*X(idxAsurfice,:) + A(:,idxAice)*X(idxAice,:);
         else
             logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
-            ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+            ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAsurfice)*X(idxAsurfice,:);
         end
         bg = C*Z;
         ygood_1nan = convertBoolTo1nan(~logYif_isnan);
@@ -1066,14 +1180,45 @@ for n=2:nIter
                     res_exp_scaled = res_exp./(exp(A(:,idxAlogT))*X(idxAlogT,:));
                 end
             end
-            logYif_isnan_spk = abs(res_exp_scaled)>0.0015;
+            % logYif_isnan_spk = abs(res_exp_scaled)>thrd_noise_small;
+            % logYif_isnan_spk = abs(res_exp_scaled)>0.0015;
+            sig = exp(log(Ymdl) - logt_est*Xtc);
+            snr = res_exp_scaled ./ sig;
+            ldiff = abs(diff(sig,1));
+            slp = zeros(size(sig));
+            slp(1:end-1,:) = slp(1:end-1, :) + ldiff;
+            slp(2:end, :) = slp(2:end, :) + ldiff;
+            slp(2:end-1, :) = slp(2:end-1, :) / 2;
+            % logYif_isnan_spk = abs(snr) > 0.02 + slp;
+            logABest = A(:,or(idxAsurfice, or(idxAlib, idxAice)))*X(or(idxAsurfice,or(idxAlib, idxAice)),:);
+            AB_est_lvl = mean(1-exp(logABest), 1);
+            logYif_isnan_spk = abs(snr) > (thrd_snr + slp).* max(AB_est_lvl/0.2, 1);
             
             % combine bad entry detections
             logYif_isnan = or(logYif_isnan_ori, or(bp_est_bool,logYif_isnan_spk));
             
+
+            % Additional evaluation: if a pixel is not marked as a bad
+            % pixel, but more than half of the surrounding are bad, then a 
+            % bad pixel is wrongly fitted well by chance.
+            % local_gp_ratio = conv2(~logYif_isnan, ones(21,1)/21,'same');
+            % not_isolated = conv2(local_gp_ratio > 0.5, ones(21,1), 'same');
+            % logYif_isnan(not_isolated < 1) = true;
+
             % check too many bad entries are detected for each spectrum.
             badspc = (sum(logYif_isnan,1)/B) > th_badspc;
             logYif_isnan = or(logYif_isnan,badspc);
+
+            % if include_ice
+            %     logYif_cor_1nan = logYif - logt_est * Xtc;
+            % else
+            %     logYif_cor_1nan = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
+            % end
+            % logYif_cor_1nan(logYif_isnan) = nan;
+            % logy_med = median(logYif_cor_1nan, 1, 'omitnan');
+            % dst_from_med = abs(logYif_cor_1nan - logy_med);
+            % prc80_spc = prctile(dst_from_med, 80, 1);
+            % logYif_isnan(dst_from_med > prc80_spc * 3) = true;
             
             % lambda_r = 1./(mad_expected+bands_bias_mad).*(Ymdl)./(B*20);
             lambda_r = 1./(mad_expected).*(Ymdl)./(B*20);
@@ -1107,10 +1252,10 @@ for n=2:nIter
     
     switch upper(lambda_update_rule)
         case 'L1SUM'
-            resNrm = nansum(abs(RR.* lambda_r),[1,2]);
+            resNrm = sum(abs(RR.* lambda_r),[1,2], 'omitnan');
         case 'MED'
             logYif_nisnan_1nan = convertBoolTo1nan(~logYif_isnan);
-            resNrm = nanmedian(abs(lambda_r.*RR .* logYif_nisnan_1nan),[1,2]);
+            resNrm = median(abs(lambda_r.*RR .* logYif_nisnan_1nan),[1,2], 'omitnan');
         case 'NONE'
             resNrm = 1;
         otherwise
@@ -1170,7 +1315,6 @@ for n=2:nIter
         else
             logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
         end
-        logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
         logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
         logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
 
@@ -1219,6 +1363,7 @@ for n=2:nIter
         lambda_a_2(idxAlogT,:,:) = lambda_a_2(idxAlogT,:,:) .* (resNewNrm ./ resNrm);
     end
     lambda_a_2(idxAlib,:,:) = lambda_a_2(idxAlib,:,:) .* (resNewNrm ./ resNrm);
+    lambda_a_2(idxAsurfice,:,:) = lambda_a_2(idxAsurfice,:,:) .* (resNewNrm ./ resNrm);
     lambda_a_2(idxAice,:,:) = lambda_a_2(idxAice,:,:) .* (resNewNrm ./ resNrm);
     cff = cff .* resNewNrm./resNrm;
     
@@ -1231,6 +1376,33 @@ for n=2:nIter
     lambda_c = lambda_c_ori;
     lambda_c(logYif_isnan_c) = inf;
     lambda_c([1,Nc],:,:) = 0;
+
+    [~, first_gp_l] = max(~logYif_isnan_c, [], 1);
+    is_bad_ledge = first_gp_l > 10;
+    [row_is_bad_ledge, col_is_bad_ledge] = ind2sub([L,S], ...
+                                                   find(is_bad_ledge));
+    lambda_c_ledge_bad_ind = sub2ind(size(logYif_isnan), ...
+        ones(size(row_is_bad_ledge)), row_is_bad_ledge, col_is_bad_ledge);
+    lambda_c(lambda_c_ledge_bad_ind) = inf;
+    lambda_c_ledge_ind = sub2ind(size(lambda_c), ...
+        first_gp_l(is_bad_ledge), row_is_bad_ledge, col_is_bad_ledge);
+    c2_z(lambda_c_ledge_bad_ind) = 0;
+    c2_z(lambda_c_ledge_ind) = -inf;
+
+
+    [~, first_gp_r] = max(flip(~logYif_isnan_c, 1), [], 1);
+    is_bad_redge = first_gp_r > 10;
+    [row_is_bad_redge, col_is_bad_redge] = ind2sub([L,S], ...
+                                                    find(is_bad_redge));
+    lambda_c_redge_bad_ind = sub2ind(size(logYif_isnan), ...
+        Nc * ones(size(row_is_bad_redge)), row_is_bad_redge, ...
+        col_is_bad_redge);
+    lambda_c(lambda_c_redge_bad_ind) = inf;
+    lambda_c_redge_ind = sub2ind(size(lambda_c), ...
+        Nc - first_gp_r(is_bad_redge) + 1, ...
+        row_is_bad_redge, col_is_bad_redge);
+    c2_z(lambda_c_redge_bad_ind) = 0;
+    c2_z(lambda_c_redge_ind) = -inf;
     
 end
 
@@ -1243,15 +1415,15 @@ if ffc_mode
         [ X,Z,D,rho,Rhov,~,~,cost_val ] = huwacbl1_admm_gat_a_batch(A,...
             logYif-logt_est,C,...
             'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
-            'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
-            'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+            'C2_Z',c2_z, 'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
+            'verbose',verbose_huwacb,'tol',1e-5,'maxiter',maxiter_huwacb,...
             'PRECISION',precision,'YNORMALIZE',y_normalize);
     else
          [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
             = huwacbl1_admm_gat_a(A,logYif-logt_est,WA,'LAMBDA_A',lambda_a_2,...
             'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
-            'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
-            'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+            'C2_Z',c2_z, 'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+            'tol',1e-5, 'maxiter',maxiter_huwacb,'verbose','no',...
             'precision',precision,'gpu',gpu,'Concavebase',C,...
             'debug',debug_huwacb,'YNORMALIZE',y_normalize);
     end
@@ -1261,14 +1433,14 @@ else
             logYif,C,...
             'LAMBDA_A',lambda_a_2,'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,...
             'C2_Z',c2_z,'Z0',Z,'D0',D,'X0',X,'R0',RR,...%'rho',rho,'Rhov',Rhov,...
-            'verbose',verbose_huwacb,'tol',tol_huwacb,'maxiter',maxiter_huwacb,...
+            'verbose',verbose_huwacb,'tol',1e-5, 'maxiter',maxiter_huwacb,...
             'PRECISION',precision,'YNORMALIZE',y_normalize);
     else
         [ X,Z,~,~,D,rho,Rhov,~,~,cost_val]...
             = huwacbl1_admm_gat_a(A,logYif,WA,'LAMBDA_A',lambda_a_2,...
             'LAMBDA_C',lambda_c,'LAMBDA_R',lambda_r,.....
-            'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
-            'tol',tol_huwacb,'maxiter',maxiter_huwacb,'verbose','no',...
+            'C2_Z',c2_z, 'Z0',Z,'D0',D,'X0',X,'R0',RR,'rho',rho,'Rhov',Rhov,...
+            'tol',1e-5,'maxiter',maxiter_huwacb,'verbose','no',...
             'precision',precision,'gpu',gpu,'Concavebase',C,...
             'debug',debug_huwacb,'YNORMALIZE',y_normalize);
     end
@@ -1282,16 +1454,35 @@ if is_debug
     end
     if include_ice
         logYif_cor_test = logYif - logt_est * Xtc ;
-        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAice)*X(idxAice,:);
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAsurfice)*X(idxAsurfice,:) + A(:,idxAice)*X(idxAice,:);
     else
         logYif_cor_test = logYif - logt_est * Xtc - A(:,idxAice)*X(idxAice,:);
-        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z;
+        ymodel = A(:,idxAlib)*X(idxAlib,:) + C*Z + A(:,idxAsurfice)*X(idxAsurfice,:);
     end
     bg = C*Z;
     ygood_1nan = convertBoolTo1nan(~logYif_isnan);
     ybad_1nan = convertBoolTo1nan(logYif_isnan);
     logYif_cor_1nan = logYif_cor_test .* ygood_1nan;
     logYif_cor_bad_1nan = logYif_cor_test .* ybad_1nan;
+
+    c2_z_edges = and(c2_z<0, isinf(c2_z));
+    [~, first_gp_l] = max(c2_z_edges, [], 1);
+    is_bad_ledge = first_gp_l > 1;
+    [row_bad_ledge, col_bad_ledge] = ind2sub([L,S], find(is_bad_ledge));
+    first_good = first_gp_l(is_bad_ledge);
+    for i=1:numel(row_bad_ledge)
+        bg(1:first_good(i)-1, row_bad_ledge(i), col_bad_ledge(i)) = nan;
+        ymodel(1:first_good(i)-1, row_bad_ledge(i), col_bad_ledge(i)) = nan;
+    end
+    
+    [~, first_gp_r] = max(flip(c2_z_edges, 1), [], 1);
+    is_bad_redge = first_gp_r > 1;
+    [row_bad_redge, col_bad_redge] = ind2sub([L,S], find(is_bad_redge));
+    last_good = L - first_gp_r(is_bad_redge) + 1;
+    for i=1:numel(row_bad_redge)
+        bg(last_good(i)+1:end, row_bad_redge(i), col_bad_redge(i)) = nan;
+        ymodel(last_good(i)+1:end, row_bad_redge(i), col_bad_redge(i)) = nan;
+    end
 
     for li=liList
         plot(ax_spc,WA,exp(logYif_cor_test(:,li)),'.-','Color',cols(9,:),...
@@ -1328,15 +1519,17 @@ if batch
     logAB        = pagefun(@mtimes,Alib,X(idxAlib,:,:));
     logBg        = pagefun(@mtimes,C,Z);
     logIce       = pagefun(@mtimes,Aicelib,X(idxAice,:,:));
+    logSurfIce   = pagefun(@mtimes,Asurficelib,X(idxAsurfice,:,:));
     if include_ice
-        logYif_cor   = logYif - pagefun(@mtimes,logt_est,Xtc);
+        logYif_cor = logYif - pagefun(@mtimes,logt_est,Xtc);
     else
-        logYif_cor   = logYif - pagefun(@mtimes,logt_est,Xtc) - logIce;
+        logYif_cor = logYif - pagefun(@mtimes,logt_est,Xtc) - logIce;
     end
 else
     logAB = Alib*X(idxAlib,:);
     logBg = C*Z;
     logIce = Aicelib*X(idxAice,:);
+    logSurfIce = Asurficelib * X(idxAsurfice, :);
     if include_ice
         logYif_cor = logYif - logt_est*Xtc;
     else
@@ -1352,9 +1545,27 @@ if batch
 else
 end
 
-Xt           = Xtc;
-Xice         = X(idxAice,:,:);
-Xlib         = X(idxAlib,:,:);
+c2_z_edges = and(c2_z<0, isinf(c2_z));
+[~, first_gp_l] = max(c2_z_edges, [], 1);
+is_bad_ledge = first_gp_l > 1;
+[row_bad_ledge, col_bad_ledge] = ind2sub([L,S], find(is_bad_ledge));
+first_good = first_gp_l(is_bad_ledge);
+for i=1:numel(row_bad_ledge)
+    logBg(1:first_good(i)-1, row_bad_ledge(i), col_bad_ledge(i)) = nan;
+end
+
+[~, first_gp_r] = max(flip(c2_z_edges, 1), [], 1);
+is_bad_redge = first_gp_r > 1;
+[row_bad_redge, col_bad_redge] = ind2sub([L,S], find(is_bad_redge));
+last_good = L - first_gp_r(is_bad_redge) + 1;
+for i=1:numel(row_bad_redge)
+    logBg(last_good(i)+1:end, row_bad_redge(i), col_bad_redge(i)) = nan;
+end
+
+Xt       = Xtc;
+Xice     = X(idxAice,:,:);
+Xsurfice = X(idxAsurfice, :, :);
+Xlib     = X(idxAlib,:,:);
 
 
 

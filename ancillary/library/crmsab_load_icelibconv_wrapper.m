@@ -24,6 +24,23 @@ switch opt
         Aicelib = AGrundy;
         Aicelib = normalizevec(Aicelib,1);
         infoAicelib = infoAGrundy;
+    case 5
+        [AGrundy,infoAGrundy] = crmsab_load_lib_base('Q_H2Oicelib_Grundy1998',4,wabasename,...
+                                  c,'METHOD','interpCRISMspc','retainRatio',0.1);
+        Aicelib = AGrundy;
+        infoAicelib = infoAGrundy;
+    case 6
+        [AGrundy,infoAGrundy] = crmsab_load_lib_base('Q_H2Oicelib_Grundy1998',5,wabasename,...
+                                  c,'METHOD','interpCRISMspc','retainRatio',0.1);
+        Aicelib = AGrundy;
+        infoAicelib = infoAGrundy;
+
+    case 9
+        [AGrundy,infoAGrundy] = crmsab_load_lib_base('Q_H2Oicelib_Grundy1998',9,wabasename,...
+                                  c,'METHOD','interpCRISMspc','retainRatio',0.1);
+        Aicelib = AGrundy;
+        infoAicelib = infoAGrundy;
+
     otherwise
         error('Opt %d is not defined',opt);
 end

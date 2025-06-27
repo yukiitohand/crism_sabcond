@@ -326,7 +326,7 @@ verbose      = 0;
 column_skip  = 1;
 weight_mode  = 0;
 lambda_update_rule = 'L1SUM';
-th_badspc    = 0.8;
+th_badspc    = 0.5;
 ffc_mode     = false;
 opt_bands_ignore_init = 'none';
 include_ice = false;
@@ -348,13 +348,18 @@ optRELAB        = 1;
 optUSGSsplib    = 1;
 optCRISMTypeLib = 2;
 opticelib       = '';
+optsurficelib   = '';
 
 % ## SABCONDC OPTIONS #----------------------------------------------------
 nIter = 5;
 lambda_a = 0.01;
+lambda_a_ice   = 0;
+lambda_a_surfice   = 0;
 t_update     = inf;
 logT_neg = false;
 logt_relax = false;
+% thrd_noise_small = 0.0015;
+thrd_snr = 0.02;
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 precision  = 'double';
@@ -473,18 +478,28 @@ else
                 optCRISMTypeLib = varargin{i+1};
             case 'OPT_ICELIB'
                 opticelib = varargin{i+1};
+            case 'OPT_SURFICELIB'
+                optsurficelib = varargin{i+1};
                 
             % ## SABCONDC OPTIONS #----------------------------------------
             case 'NITER'
                 nIter = varargin{i+1};
             case 'LAMBDA_A'
                 lambda_a = varargin{i+1};
+            case 'LAMBDA_A_ICE'
+                lambda_a_ice = varargin{i+1};
+            case 'LAMBDA_A_SURFICE'
+                lambda_a_surfice = varargin{i+1};
             case 'T_UPDATE'
                 t_update = varargin{i+1};
             case 'LOGT_NEG'
                 logT_neg = varargin{i+1};
             case 'LOGT_RELAX'
                 logt_relax = varargin{i+1};
+            % case 'THRESHOLD_NOISE_SMALL'
+            %     thrd_noise_small = varargin{i+1};
+            case 'THRESHOLD_SNR'
+                thrd_snr = varargin{i+1};
                 
             % ## PROCESSING OPTIONS #--------------------------------------
             case 'PRECISION'
@@ -819,7 +834,8 @@ switch cal_bias_cor
         error('Undefined CAL_BIAS_COR=%d',cal_bias_cor);
 end
 
-
+Yif(516,:,1:48) = nan;
+Yif(516,341:end,49) = nan;
 Yif = Yif(:,:,bands);
 Yif(Yif<=0) = nan;
 logYif = log(Yif);
@@ -1043,7 +1059,7 @@ switch upper(PROC_MODE)
         Valid_pixels = false([nLall,nCall]);
         
         for c = Columns_valid
-            tic;
+            % tic;
             if Alib_out
                 switch upper(optLibrary)
                     case 'FULL'
@@ -1094,6 +1110,33 @@ switch upper(PROC_MODE)
             else
                 Aicelib = [];
             end
+            if ~isempty(optsurficelib)
+                if Alib_out
+                    switch upper(optLibrary)
+                        case 'FULL'
+                            [Asurficelib,infoAsurficeall,valid_idx_surfice] = crmsab_loadAsurficelibconv(optsurficelib,basenameWA,c,...
+                                bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',1);
+                        case 'MINI'
+                            % [Aicelib,infoAiceall,valid_idx_ice] = crmsab_loadAicelibconv_mini(opticelib,basenameWA,c,bands_opt);
+                        otherwise
+                            error('Undefined OPT_LIBRARY %s',optLibrary);
+                    end
+                    ancillaries(c).Aicelib = Aicelib;
+                    ancillaries(c).infoAicelib = infoAiceall(valid_idx_ice);
+                else
+                    switch upper(optLibrary)
+                        case 'FULL'
+                            [Asurficelib] = crmsab_loadAsurficelibconv(optsurficelib,basenameWA,c,...
+                                bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',1);
+                        case 'MINI'
+                            % [Aicelib] = crmsab_loadAicelibconv_mini(opticelib,basenameWA,c,bands_opt);
+                        otherwise
+                            error('Undefined OPT_LIBRARY %s',optLibrary);
+                    end
+                end
+            else
+                Asurficelib = [];
+            end
             if strcmpi(precision,'single')
                 Alib = single(Alib); Aicelib = single(Aicelib);
             end
@@ -1130,7 +1173,7 @@ switch upper(PROC_MODE)
             ancillaries(c).Xice = Xice_c;
             Valid_pixels(lBool,c) = vldpxl_c';
             
-            toc;
+            % toc;
         end
 
         Yif_cor = exp(Yif_cor); T_est = exp(T_est);
@@ -1158,16 +1201,17 @@ switch upper(PROC_MODE)
         badspcs = true([1,nLall,nCall]);
         bp_est_bools = false([nBall,1,nCall]);
         Ice_est = nan([nBall,nLall,nCall],precision);
+        SurfIce_est = nan([nBall,nLall,nCall],precision);
         Yif_cor_ori = nan([nBall,nLall,nCall],precision);
         ancillaries = struct('Xt',cell(nCall,1),'Xlib',cell(nCall,1),...
                              'Xice',cell(nCall,1),...
-                             'Alib',cell(nCall,1),'Aicelib',cell(nCall,1),...
-                             'infoAlib',cell(nCall,1),'infoAicelib',cell(nCall,1),...
+                             'Alib',cell(nCall,1),'Aicelib',cell(nCall,1), 'Asurficelib',cell(nCall,1), ...
+                             'infoAlib',cell(nCall,1),'infoAicelib',cell(nCall,1),'infoAsurficelib',cell(nCall,1), ...
                              'AlogT',cell(nCall,1));
         n_batch = ceil(length(Columns_valid)/batch_size);
         
         for ni = 1:n_batch
-            % tic;
+            tic;
             if ni~=n_batch
                 Columns = Columns_valid((1+batch_size*(ni-1)):(batch_size*ni));
             elseif ni==n_batch
@@ -1233,16 +1277,50 @@ switch upper(PROC_MODE)
                 else
                     Aicelib = [];
                 end
+                if ~isempty(optsurficelib)
+                    if Alib_out
+                        switch upper(optLibrary)
+                            case 'FULL'
+                                [Asurficelib,infoAsurficeall,valid_idx_surfice]...
+                                    = crmsab_loadAsurficelibconv(optsurficelib,basenameWA,c,...
+                                    bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',1);
+                            case 'MINI'
+                                % [Aicelib,infoAiceall,valid_idx_ice] ...
+                                %     = crmsab_loadAicelibconv_mini(opticelib,basenameWA,c,bands_opt);
+                            otherwise
+                                error('Undefined OPT_LIBRARY %s',optLibrary);
+                        end
+                        ancillaries(c).Asurficelib     = Asurficelib;
+                        ancillaries(c).infoAsurficelib = infoAsurficeall(valid_idx_surfice);
+                    else
+                        switch upper(optLibrary)
+                            case 'FULL'
+                                [Asurficelib] = crmsab_loadAsurficelibconv(...
+                                    optsurficelib,basenameWA,c,...
+                                    bands_opt,WAb(:,c),'overwrite',0,'CNTRMVL',1);
+                            case 'MINI'
+                                % [Aicelib] = crmsab_loadAicelibconv_mini(...
+                                %     opticelib,basenameWA,c,bands_opt);
+                            otherwise
+                                error('Undefined OPT_LIBRARY %s',optLibrary);
+                        end
+                    end
+                else
+                    Asurficelib = [];
+                end
                 if i==1
                     Alibs = Alib;
                     Aicelibs = Aicelib;
+                    Asurficelibs = Asurficelib;
                 else
                     Alibs = cat(3,Alibs,Alib);
                     Aicelibs = cat(3,Aicelibs,Aicelib);
+                    Asurficelibs = cat(3, Asurficelibs, Asurficelib);
                 end
             end
             if strcmpi(precision,'single')
                 Alibs = single(Alibs); Aicelibs = single(Aicelibs);
+                Asurficelibs = single(Asurficelibs);
             end
             
             switch weight_mode
@@ -1327,12 +1405,13 @@ switch upper(PROC_MODE)
                                       'Bands_Bias_MAD',bands_bias_mad);
                         case {'CPU_2','GPU_2','GPU_BATCH_2'}
                             [Yif_cor(bBool,lBool,Columns),T_est(bBool,1,Columns),...
-                                AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns),...
-                                Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,badspcs(1,lBool,Columns),bp_est_bools(bBool,1,Columns)]...
+                                AB_est(bBool,lBool,Columns),Bg_est(bBool,lBool,Columns),Ice_est(bBool,lBool,Columns), SurfIce_est(bBool,lBool,Columns),...
+                                Yif_isnan(bBool,lBool,Columns),Xt_c,Xlib_c,Xice_c,Xsurfice_c,badspcs(1,lBool,Columns),bp_est_bools(bBool,1,Columns)]...
                             = sabcondc_v3l1_gpu_batch(logYif(:,:,Columns),WAb(:,Columns),Alibs,...
                                       logT_extrap(:,:,Columns),...
                                       BP(:,:,Columns),'lambda_a',lambda_a,'precision',precision,...
-                                      'Aicelib',Aicelibs,'nIter',nIter,...
+                                      'Aicelib',Aicelib, 'Asurficelib', Asurficelib,'nIter',nIter,...
+                                      'lambda_a_ice', lambda_a_ice, 'lambda_a_surfice', lambda_a_surfice, ...
                                       'verbose_lad',verbose_lad,'debug_lad',debug_lad,...
                                       'verbose_huwacb',verbose_huwacb,'debug_huwacb',debug_huwacb,...
                                       'gpu',gpu,'LAMBDA_UPDATE_RULE',lambda_update_rule,...
@@ -1344,7 +1423,7 @@ switch upper(PROC_MODE)
                                       'Bands_Bias_MAD',bands_bias_mad,...
                                       'T_UPDATE',t_update,'LOGT_NEG',logT_neg,'logt_relax',logt_relax,...
                                       'opt_bands_ignore_init',opt_bands_ignore_init,'debug_l_plot',debug_l_plot, ...
-                                      'Include_Ice', include_ice);
+                                      'Include_Ice', include_ice, 'THRESHOLD_SNR', thrd_snr);
                     end
             end
             switch upper(PROC_MODE)
@@ -1391,9 +1470,11 @@ switch upper(PROC_MODE)
             Xt_c_cell   = squeeze(num2cell(Xt_c,[1,2]));
             Xlib_c_cell = squeeze(num2cell(Xlib_c,[1,2]));
             Xice_c_cell = squeeze(num2cell(Xice_c,[1,2]));
+            Xsurfice_c_cell = squeeze(num2cell(Xsurfice_c,[1,2]));
             [ancillaries(Columns).Xt] = Xt_c_cell{:};
             [ancillaries(Columns).Xlib] = Xlib_c_cell{:};
             [ancillaries(Columns).Xice] = Xice_c_cell{:};
+            [ancillaries(Columns).Xsurfice] = Xsurfice_c_cell{:};
             
             switch upper(PROC_MODE)
                 case {'CPU_3','GPU_3','GPU_BATCH_3'}
@@ -1401,7 +1482,7 @@ switch upper(PROC_MODE)
                     [ancillaries(Columns).AlogT] = logT_cell{:};
                     
             end
-            % toc;
+            toc;
             
         end
         Yif_cor = permute(Yif_cor,[2,3,1]);
@@ -1410,6 +1491,7 @@ switch upper(PROC_MODE)
         Bg_est = permute(Bg_est,[2,3,1]);
         AB_est = permute(AB_est,[2,3,1]);
         Ice_est = permute(Ice_est,[2,3,1]);
+        SurfIce_est = permute(SurfIce_est, [2,3,1]);
         switch upper(PROC_MODE)
             case {'CPU_2','GPU_2','GPU_BATCH_2'}
                 T_est  = squeeze(T_est);
@@ -1426,6 +1508,7 @@ switch upper(PROC_MODE)
         Yif_cor = exp(Yif_cor); 
         Bg_est = exp(Bg_est); AB_est = exp(AB_est); 
         Ice_est = exp(Ice_est);
+        SurfIce_est = exp(SurfIce_est);
         Yif_cor_ori = exp(Yif_cor_ori);
         switch upper(PROC_MODE)
             case {'CPU_2','GPU_2','GPU_BATCH_2'}
@@ -1485,6 +1568,7 @@ fprintf(fid,'SAVE_PDIR: %s\n',save_pdir);
 fprintf(fid,'SAVE_DIR_YYYY_DOY: %d\n',save_dir_yyyy_doy);
 fprintf(fid,'FORCE: %d\n',force);
 fprintf(fid,'SKIP_IFEXIST: %d\n',skip_ifexist);
+fprintf(fid, 'SUFFIX: %s\n', suffix);
 fprintf(fid,'ADDITIONAL_SUFFIX: %s\n',additional_suffix);
 fprintf(fid,'INTERLEAVE_OUT: %s\n',interleave_out);
 fprintf(fid,'SUBSET_COLUMNS_OUT: %d\n', subset_columns_out);
@@ -1544,13 +1628,17 @@ fprintf(fid,'OPT_RELAB: %d\n',optRELAB);
 fprintf(fid,'OPT_SPLIBUSGS: %d\n',optUSGSsplib);
 fprintf(fid,'OPT_CRISMTYPELIB: %d\n',optCRISMTypeLib);
 fprintf(fid,'OPT_ICELIB: %d\n',opticelib);
+fprintf(fid,'OPT_SURFICELIB: %d\n',optsurficelib);
 
 % ## SABCONDC OPTIONS #----------------------------------------------------
 fprintf(fid,'NITER: %d\n',nIter);
 fprintf(fid,'LAMBDA_A:'); fprintf(fid,' %f',lambda_a); fprintf(fid,'\n');
+fprintf(fid,'LAMBDA_A_ICE:'); fprintf(fid,' %f',lambda_a_ice); fprintf(fid,'\n');
+fprintf(fid,'LAMBDA_A_SURFICE:'); fprintf(fid,' %f',lambda_a_surfice); fprintf(fid,'\n');
 fprintf(fid,'T_UPDATE: %d\n',t_update);
 fprintf(fid,'LOGT_NEG: %d\n',logT_neg);
 fprintf(fid,'LOGT_RELAX: %d\n',logt_relax);
+fprintf(fid,'THRD_SNR: %f\n',thrd_snr);
 
 % ## PROCESSING OPTIONS #--------------------------------------------------
 fprintf(fid,'PRECISION: %s\n',precision);
@@ -1577,6 +1665,7 @@ settings.save_pdir = save_pdir;
 settings.save_dir_yyyy_doy = save_dir_yyyy_doy;
 settings.force = force;
 settings.skip_ifexist = skip_ifexist;
+settings.suffix = suffix;
 settings.additional_suffix = additional_suffix;
 settings.interleave_out = interleave_out;
 settings.subset_columns_out = subset_columns_out;
@@ -1619,12 +1708,16 @@ settings.optRELAB = optRELAB;
 settings.optUSGSsplib = optUSGSsplib;
 settings.optCRISMTypeLib = optCRISMTypeLib;
 settings.opticelib = opticelib;
+settings.optsurficelib = optsurficelib;
 % ## SABCONDC OPTIONS #----------------------------------------------------
 settings.nIter = nIter;
 settings.lambda_a = lambda_a;
+settings.lambda_a_ice = lambda_a_ice;
+settings.lambda_a_surfice = lambda_a_surfice;
 settings.t_update = t_update;
 settings.logT_neg = logT_neg;
 settings.logt_relax = logt_relax;
+settings.thrd_snr = thrd_snr;
 % ## PROCESSING OPTIONS #--------------------------------------------------
 settings.precision = precision;
 settings.PROC_MODE = PROC_MODE;
@@ -1636,9 +1729,9 @@ settings.debug = is_debug;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Yif_cor_nr = Yif_cor;
 if include_ice
-    Yif_mdl = AB_est .* Bg_est + Ice_est;
+    Yif_mdl = AB_est .* Bg_est .* SurfIce_est .* Ice_est;
 else
-    Yif_mdl = AB_est .* Bg_est;
+    Yif_mdl = AB_est .* Bg_est .* SurfIce_est;
 end
 nan_cells = isnan(Yif_cor);
 Yif_cor_nr(nan_cells) = Yif_mdl(nan_cells);
@@ -1683,6 +1776,8 @@ wa = WAdata.img;
 [Yifmdl_ds] = crism_smile_correction(Yif_mdl   ,wa,hdr_cr.wavelength(:)*1000,bands);
 [AB_est_ds] = crism_smile_correction(AB_est    ,wa,hdr_cr.wavelength(:)*1000,bands);
 [Bg_est_ds] = crism_smile_correction(Bg_est    ,wa,hdr_cr.wavelength(:)*1000,bands);
+[Ice_est_ds] = crism_smile_correction(Ice_est  ,wa,hdr_cr.wavelength(:)*1000,bands);
+[SurfIce_est_ds] = crism_smile_correction(SurfIce_est  ,wa, hdr_cr.wavelength(:)*1000,bands);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Crop bands
@@ -1694,6 +1789,9 @@ if do_crop_bands
     Bg_est      = Bg_est(:,:,bands);
     if ~isempty(opticelib)
         Ice_est = Ice_est(:,:,bands);
+    end
+    if ~isempty(optsurficelib)
+        SurfIce_est = SurfIce_est(:,:,bands);
     end
     Yif_nr_ds   = Yif_nr_ds(:,:,bands);
     Yifmdl_ds   = Yifmdl_ds(:,:,bands);
@@ -1780,6 +1878,31 @@ if save_file
                 % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
                 % envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
                 % fprintf('Done\n');
+                basename_Ice_ds = [basename_Ice  '_ds'];
+                hdr_ds = hdr_cr;
+                dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+                hdr_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
+                hdr_ds.cat_history = [hdr_cr.cat_history '_ds'];
+                save_output_img(single(Ice_est_ds), hdr_ds, ...
+                    basename_Ice_ds, save_dir, verbose);
+            end
+
+            if ~isempty(optsurficelib)
+                basename_SurfIce = [basename_cr '_SurfIce'];
+                save_output_img(single(SurfIce_est),hdr_cr,basename_SurfIce,save_dir,verbose);
+                % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.hdr']));
+                % envihdrwritex(hdr_cr,joinPath(save_dir, [basename_Ice '.hdr']),'OPT_CMOUT',false);
+                % fprintf('Done\n');
+                % fprintf('Saving %s ...\n',joinPath(save_dir, [basename_Ice '.img']));
+                % envidatawrite(single(Ice_est),joinPath(save_dir, [basename_Ice '.img']),hdr_cr);
+                % fprintf('Done\n');
+                basename_SurfIce_ds = [basename_SurfIce  '_ds'];
+                hdr_ds = hdr_cr;
+                dt = datetime('now','TimeZone','local','Format','eee MMM dd hh:mm:ss yyyy');
+                hdr_ds.description = sprintf('{CRISM DATA [%s] header editted timestamp, nan replaced after processing.}',dt);
+                hdr_ds.cat_history = [hdr_cr.cat_history '_ds'];
+                save_output_img(single(SurfIce_est_ds), hdr_ds, ...
+                    basename_SurfIce_ds, save_dir,verbose);
             end
             
             % Nan Replaced data (nr)
@@ -1957,6 +2080,9 @@ elseif nargout==1
     if ~isempty(opticelib)
         Ice_est = permute(Ice_est,    prmt_ordr);
     end
+    if ~isempty(optsurficelib)
+        SurfIce_est = permute(SurfIce_est,    prmt_ordr);
+    end
 
     out.Yif_cor     = Yif_cor;
     out.Yif_cor_nr  = Yif_cor_nr;
@@ -1969,6 +2095,9 @@ elseif nargout==1
     out.Yifmdl_ds   = Yifmdl_ds;
     if ~isempty(opticelib)
         out.Ice_est = Ice_est;
+    end
+    if ~isempty(opticelib)
+        out.SurfIce_est = SurfIce_est;
     end
     switch upper(PROC_MODE)
         case {'CPU_3','GPU_3','GPU_BATCH_3'}

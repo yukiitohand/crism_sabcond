@@ -96,8 +96,8 @@ else
     
     [ continua,bases ] = learnContinuum(wvc,logAallNrmedvalid,...
                                         'convhull');
-    [ logAcntrmvd ] = CntRmvl(logAallNrmedvalid,'additive','CONTINUA',...
-                              continua );
+    [ logAcntrmvd ] = CntRmvl(logAallNrmedvalid,'additive','CONTINUA', ...
+                              continua);
     logAcntrmvd = -logAcntrmvd;
     
     % save

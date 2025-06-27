@@ -106,6 +106,8 @@ if opt
             Alibname = 'AabsxsecCOlib_HITRAN'; infoAname = 'infoabsxsecCOlib_HITRAN';
         case 'Q_H2Oicelib_Grundy1998'
             Alibname = 'AQ_H2Oicelib_Grundy1998'; infoAname = 'infoQ_H2Oicelib_Grundy1998';
+        case 'Hapke_H2Oicelib_Grundy1998'
+            Alibname = 'AHapke_H2Oicelib_Grundy1998'; infoAname = 'infoHapke_H2Oicelib_Grundy1998';
         otherwise
             error([ ...
                 'lib %s is not defined. Please select from: \n'           , ...

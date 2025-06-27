@@ -53,6 +53,7 @@ classdef SABCONDdataset < dynamicprops
             obj.appendCAT('Bg',basename_cor,dirpath,'Bg');
             obj.appendCAT('mdl',basename_cor,dirpath,'mdl');
             obj.appendCAT('Ice',basename_cor,dirpath,'Ice');
+            obj.appendCAT('SurfIce',basename_cor,dirpath,'SurfIce');
             obj.appendCAT('nr_ds',basename_cor,dirpath,'nr_ds');
             obj.appendCAT('mdl_ds',basename_cor,dirpath,'mdl_ds');
             obj.appendCAT('nr_ds_rp',basename_cor,dirpath,'nr_ds_rp');
