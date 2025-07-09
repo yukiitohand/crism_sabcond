@@ -833,9 +833,10 @@ switch cal_bias_cor
     otherwise
         error('Undefined CAL_BIAS_COR=%d',cal_bias_cor);
 end
+% below is custom processing of 287F
+% Yif(516,:,1:48) = nan;
+% Yif(516,341:end,49) = nan;
 
-Yif(516,:,1:48) = nan;
-Yif(516,341:end,49) = nan;
 Yif = Yif(:,:,bands);
 Yif(Yif<=0) = nan;
 logYif = log(Yif);
